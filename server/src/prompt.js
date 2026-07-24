@@ -21,8 +21,8 @@ export function buildSystemPrompt(mode, card) {
     sections.push(osFile('agent-define.md'));
     sections.push('# Referencia: card-definition.md\n\n' + osFile('card-definition.md'));
     sections.push('# Referencia: tech-definition.md\n\n' + osFile('tech-definition.md'));
-    const stacks = card.stack.length ? card.stack : ['app', 'web', 'backend'];
-    for (const s of stacks) {
+    const stackNames = card.stacks.length ? card.stacks.map((s) => s.name) : ['app', 'web', 'backend'];
+    for (const s of stackNames) {
       const qa = osFile(`qa-criteria-${s}.md`);
       if (qa) sections.push(`# Referencia: qa-criteria-${s}.md\n\n` + qa);
     }
@@ -37,7 +37,7 @@ export function buildSystemPrompt(mode, card) {
       (docs.length ? docs.map((d) => `- ${d.path} — ${d.title}`).join('\n') : '(aún no hay documentos)')
   );
 
-  const props = `stack: ${card.stack.join(', ') || 'sin asignar'} · versión: ${card.version || 'sin asignar'} · columna: ${card.column}`;
+  const props = `stacks: ${formatStacks(card)} · columna: ${card.column}`;
   if (mode === 'define') {
     sections.push(`# Card a definir\n\nTítulo: ${card.title}\nPropiedades: ${props}\n\n## Borrador de Manu\n\n${card.draft || '(borrador vacío)'}`);
   } else {
@@ -47,6 +47,24 @@ export function buildSystemPrompt(mode, card) {
   }
 
   return sections.filter(Boolean).join('\n\n---\n\n');
+}
+
+export function formatStacks(card) {
+  if (!card.stacks.length) return 'sin asignar';
+  return card.stacks.map((s) => (s.version ? `${s.name} (v${s.version})` : s.name)).join(', ');
+}
+
+// Prompt listo para pegar en el feature-builder del proyecto de destino.
+// Plantilla editable en os/feature-prompt.md con {{title}}, {{stacks}}, {{definition}}.
+export function buildFeaturePrompt(card) {
+  if (!card.definition) throw Object.assign(new Error('La card aún no tiene definición generada'), { status: 400 });
+  const template =
+    osFile('feature-prompt.md') ||
+    '# {{title}}\n\nStacks implicados: {{stacks}}\n\n---\n\n{{definition}}';
+  return template
+    .replaceAll('{{title}}', card.title)
+    .replaceAll('{{stacks}}', formatStacks(card))
+    .replaceAll('{{definition}}', card.definition);
 }
 
 export function toolsForMode(mode) {

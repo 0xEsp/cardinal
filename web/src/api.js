@@ -16,6 +16,7 @@ export const api = {
   cards: () => req('/api/cards'),
   createCard: (title) => req('/api/cards', json('POST', { title })),
   updateCard: (id, patch) => req(`/api/cards/${id}`, json('PUT', patch)),
+  cardPrompt: (id) => req(`/api/cards/${id}/prompt`),
   deleteCard: (id) => req(`/api/cards/${id}`, { method: 'DELETE' }),
   docs: () => req('/api/docs'),
   docContent: (path) => req(`/api/docs/content?path=${encodeURIComponent(path)}`),

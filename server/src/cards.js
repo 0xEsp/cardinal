@@ -1,11 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import matter from 'gray-matter';
-import { CARDS_DIR } from './paths.js';
+import { db } from './db.js';
 
 export const COLUMNS = ['backlog', 'todo', 'in-progress', 'done-dev', 'done'];
-
-const DEFINITION_MARKER = '<!-- DEFINITION -->';
+export const STACKS = ['app', 'web', 'backend'];
 
 function slugify(text) {
   return text
@@ -17,93 +13,83 @@ function slugify(text) {
     .slice(0, 60) || 'card';
 }
 
-function cardFile(id) {
-  const file = path.join(CARDS_DIR, `${id}.md`);
-  if (!fs.existsSync(file)) throw Object.assign(new Error(`Card ${id} no encontrada`), { status: 404 });
-  return file;
-}
-
-function parseCard(file) {
-  const raw = fs.readFileSync(file, 'utf8');
-  const { data, content } = matter(raw);
-  const idx = content.indexOf(DEFINITION_MARKER);
-  const draft = (idx === -1 ? content : content.slice(0, idx)).trim();
-  const definition = idx === -1 ? '' : content.slice(idx + DEFINITION_MARKER.length).trim();
+function toCard(row, stackRows) {
   return {
-    id: path.basename(file, '.md'),
-    title: data.title || path.basename(file, '.md'),
-    column: COLUMNS.includes(data.column) ? data.column : 'backlog',
-    stack: Array.isArray(data.stack) ? data.stack : [],
-    version: data.version ?? null,
-    createdAt: data.createdAt ?? null,
-    updatedAt: data.updatedAt ?? null,
-    draft,
-    definition,
+    id: row.id,
+    title: row.title,
+    column: row.column,
+    stacks: stackRows.map((s) => ({ name: s.name, version: s.version })),
+    draft: row.draft,
+    definition: row.definition,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
-function writeCard(file, card) {
-  const front = {
-    title: card.title,
-    column: card.column,
-    stack: card.stack,
-    version: card.version,
-    createdAt: card.createdAt,
-    updatedAt: new Date().toISOString(),
-  };
-  let body = `${card.draft.trim()}\n`;
-  if (card.definition && card.definition.trim()) {
-    body += `\n${DEFINITION_MARKER}\n\n${card.definition.trim()}\n`;
+function stacksOf(cardId) {
+  return db.prepare('SELECT name, version FROM card_stacks WHERE card_id = ? ORDER BY name').all(cardId);
+}
+
+function validateStacks(stacks) {
+  if (!Array.isArray(stacks)) throw Object.assign(new Error('stacks debe ser un array'), { status: 400 });
+  for (const s of stacks) {
+    if (!STACKS.includes(s.name)) throw Object.assign(new Error(`stack inválido: ${s.name}`), { status: 400 });
   }
-  fs.writeFileSync(file, matter.stringify(body, front));
 }
 
 export function listCards() {
-  fs.mkdirSync(CARDS_DIR, { recursive: true });
-  return fs
-    .readdirSync(CARDS_DIR)
-    .filter((f) => f.endsWith('.md'))
-    .map((f) => parseCard(path.join(CARDS_DIR, f)))
-    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const rows = db.prepare('SELECT * FROM cards ORDER BY created_at DESC').all();
+  return rows.map((r) => toCard(r, stacksOf(r.id)));
 }
 
 export function getCard(id) {
-  return parseCard(cardFile(id));
+  const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(id);
+  if (!row) throw Object.assign(new Error(`Card ${id} no encontrada`), { status: 404 });
+  return toCard(row, stacksOf(id));
 }
 
 export function createCard({ title }) {
   if (!title || !title.trim()) throw Object.assign(new Error('title requerido'), { status: 400 });
-  fs.mkdirSync(CARDS_DIR, { recursive: true });
   const id = `${Date.now().toString(36)}-${slugify(title)}`;
-  const file = path.join(CARDS_DIR, `${id}.md`);
   const now = new Date().toISOString();
-  writeCard(file, {
-    title: title.trim(),
-    column: 'backlog',
-    stack: [],
-    version: null,
-    createdAt: now,
-    draft: '',
-    definition: '',
-  });
-  return parseCard(file);
+  db.prepare('INSERT INTO cards (id, title, "column", created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(
+    id,
+    title.trim(),
+    'backlog',
+    now,
+    now
+  );
+  return getCard(id);
 }
 
 export function updateCard(id, patch) {
-  const file = cardFile(id);
-  const card = parseCard(file);
+  const card = getCard(id);
   if (patch.column !== undefined && !COLUMNS.includes(patch.column)) {
     throw Object.assign(new Error(`columna inválida: ${patch.column}`), { status: 400 });
   }
-  const updated = {
-    ...card,
-    ...['title', 'column', 'stack', 'version', 'draft', 'definition'].reduce((acc, k) => {
-      if (patch[k] !== undefined) acc[k] = patch[k];
-      return acc;
-    }, {}),
+  if (patch.stacks !== undefined) validateStacks(patch.stacks);
+
+  const next = {
+    title: patch.title ?? card.title,
+    column: patch.column ?? card.column,
+    draft: patch.draft ?? card.draft,
+    definition: patch.definition ?? card.definition,
   };
-  writeCard(file, updated);
-  return parseCard(file);
+  db.prepare('UPDATE cards SET title = ?, "column" = ?, draft = ?, definition = ?, updated_at = ? WHERE id = ?').run(
+    next.title,
+    next.column,
+    next.draft,
+    next.definition,
+    new Date().toISOString(),
+    id
+  );
+
+  if (patch.stacks !== undefined) {
+    db.prepare('DELETE FROM card_stacks WHERE card_id = ?').run(id);
+    const ins = db.prepare('INSERT INTO card_stacks (card_id, name, version) VALUES (?, ?, ?)');
+    for (const s of patch.stacks) ins.run(id, s.name, s.version || null);
+  }
+  return getCard(id);
 }
 
 export function saveDefinition(id, definition) {
@@ -111,5 +97,6 @@ export function saveDefinition(id, definition) {
 }
 
 export function deleteCard(id) {
-  fs.unlinkSync(cardFile(id));
+  getCard(id); // 404 si no existe
+  db.prepare('DELETE FROM cards WHERE id = ?').run(id); // cascade borra stacks y sesión
 }

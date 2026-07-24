@@ -1,24 +1,30 @@
 # JustGame · Product OS
 
-Sistema operativo de producto para JustGame: un dashboard local (kanban + agentes de IA + documentación) donde las cards y la documentación de producto viven como ficheros markdown versionados en git.
+Sistema operativo de producto para JustGame: un dashboard local (kanban + agentes de IA + documentación) con las cards en SQLite y la documentación de producto como markdown versionado en git.
 
 ## Cómo funciona
 
 ```
-os/               ← las "reglas": cómo se define una card, criterios de QA, guía de documentación
-workspace/cards/  ← cada card es un .md (frontmatter = propiedades, cuerpo = borrador + definición IA)
-workspace/docs/   ← documentación de producto (la fuente de verdad de cómo funciona JustGame)
+os/               ← las "reglas": cómo se define una card, criterios de QA, guía de documentación,
+                    plantilla del prompt para el feature-builder (feature-prompt.md)
+workspace/docs/   ← documentación de producto en .md (la fuente de verdad, versionada en git)
+data/             ← SQLite (cards + sesiones de agente; fuera de git, volumen en Docker)
 server/           ← API Node/Express + agente OpenRouter (streaming SSE + tool-use)
 web/              ← dashboard React (kanban, modal de card, consola de agente, visor de docs)
 ```
+
+Las **cards viven en SQLite** (propiedades, borrador, definición, sesiones de agente) usando el `node:sqlite` nativo de Node 22 — sin dependencias compiladas. La **documentación de producto sigue siendo markdown en git**, que es lo que consumen los agentes y lo que migras desde Notion.
 
 El flujo:
 
 1. Creas una card en el board y escribes tu **borrador** con tus palabras.
 2. Botón **▶ Definir card**: un agente (OpenRouter) coge el borrador + las reglas de `os/` + la documentación existente y genera la **definición completa** (producto + técnica + QA). Tu borrador nunca se toca. Puedes seguir iterando con el agente por chat.
-3. Te llevas esa definición al proyecto de turno (app/web/backend) y se la das a tu feature-builder.
+3. Botón **⧉ Copiar como prompt** en la pestaña Definición: copia la definición envuelta en la plantilla `os/feature-prompt.md`, lista para pegar en el feature-builder del proyecto de turno.
 4. Cuando el desarrollo termina, mueves la card a **Done Dev** y lanzas el agente de nuevo: ahora en **modo documentación** — crea o actualiza los `.md` de `workspace/docs/`.
-5. Push desde el dashboard (o `AUTO_PUSH=true`) para dejar el remoto al día.
+5. Mueves la card a **Done** para archivarla: la columna Done siempre se muestra vacía (es un sumidero); con "ver done (N)" del filtro puedes consultar las archivadas, también filtradas por stack/versión.
+6. Push desde el dashboard (o `AUTO_PUSH=true`) commitea `workspace/` + `os/` y sube al remoto.
+
+Cada card puede tocar varios **stacks (app/web/backend) y cada stack lleva su propia versión**; el board se filtra por ambos.
 
 El **modo del agente lo decide la columna**: `backlog/todo/in-progress` → definir · `done-dev` → documentar · `done` → nada.
 
@@ -55,3 +61,4 @@ Exporta tus páginas de Notion como markdown y déjalas en `workspace/docs/` (ke
 | `MODELS` | Modelos del selector, separados por coma |
 | `PORT` | Puerto del servidor (4400) |
 | `AUTO_PUSH` | `true` → commit+push automático del workspace al terminar un agente |
+| `GIT_USERNAME` / `GIT_TOKEN` | Credenciales HTTPS para pull/push (fine-grained token con Contents:write) |

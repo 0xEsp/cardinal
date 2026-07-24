@@ -1,6 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { SESSIONS_DIR } from './paths.js';
+import { getSessionData, saveSessionData } from './db.js';
 import { getCard, saveDefinition } from './cards.js';
 import { listDocs, readDoc, saveDoc } from './docs.js';
 import { buildSystemPrompt, toolsForMode, modeForColumn } from './prompt.js';
@@ -11,15 +9,10 @@ const MAX_TOOL_ROUNDS = 15;
 // cardId -> { mode, model, messages, running, listeners:Set, savedFiles:[] }
 const sessions = new Map();
 
-function sessionFile(cardId) {
-  return path.join(SESSIONS_DIR, `${cardId}.json`);
-}
-
 export function getSession(cardId) {
   if (sessions.has(cardId)) return sessions.get(cardId);
-  const file = sessionFile(cardId);
-  if (fs.existsSync(file)) {
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const data = getSessionData(cardId);
+  if (data) {
     const s = { ...data, running: false, listeners: new Set() };
     sessions.set(cardId, s);
     return s;
@@ -28,9 +21,8 @@ export function getSession(cardId) {
 }
 
 function persist(cardId, s) {
-  fs.mkdirSync(SESSIONS_DIR, { recursive: true });
-  const { listeners, running, ...data } = s;
-  fs.writeFileSync(sessionFile(cardId), JSON.stringify(data, null, 2));
+  const { listeners, running, onFinish, ...data } = s;
+  saveSessionData(cardId, data);
 }
 
 function emit(s, event) {
@@ -86,7 +78,7 @@ function execTool(cardId, mode, name, args) {
     case 'save_definition': {
       if (mode !== 'define') return 'ERROR: herramienta no disponible en este modo';
       saveDefinition(cardId, args.content || '');
-      s.savedFiles = [`workspace/cards/${cardId}.md`];
+      s.savedFiles = ['definition'];
       emit(s, { type: 'saved', target: 'definition' });
       return 'Definición guardada en la card.';
     }

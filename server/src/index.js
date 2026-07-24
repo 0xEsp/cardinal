@@ -3,6 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import { ROOT } from './paths.js';
 import * as cards from './cards.js';
+import { buildFeaturePrompt } from './prompt.js';
 import * as docs from './docs.js';
 import * as agent from './agent.js';
 import * as git from './git.js';
@@ -41,6 +42,7 @@ app.get('/api/config', wrap(() => ({
 app.get('/api/cards', wrap(() => cards.listCards()));
 app.post('/api/cards', wrap((req) => cards.createCard(req.body)));
 app.get('/api/cards/:id', wrap((req) => cards.getCard(req.params.id)));
+app.get('/api/cards/:id/prompt', wrap((req) => ({ prompt: buildFeaturePrompt(cards.getCard(req.params.id)) })));
 app.put('/api/cards/:id', wrap((req) => cards.updateCard(req.params.id, req.body)));
 app.delete('/api/cards/:id', wrap((req) => {
   cards.deleteCard(req.params.id);

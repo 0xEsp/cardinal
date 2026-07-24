@@ -5,12 +5,12 @@ services:
       - "4400:4400"
     env_file: .env
     volumes:
-      # El workspace (cards + docs) y el .git viven fuera del contenedor:
-      # así los datos y el historial sobreviven a rebuilds de la imagen.
+      # Datos fuera del contenedor: sobreviven a rebuilds de la imagen.
+      # - data/       → SQLite (cards + sesiones de agente)
+      # - workspace/  → documentación de producto (.md, versionada en git)
+      # - os/         → reglas editables
+      - ./data:/app/data
       - ./workspace:/app/workspace
       - ./os:/app/os
       - ./.git:/app/.git
-      # Credenciales de git del host para poder hacer push desde el contenedor
-      - ~/.gitconfig:/root/.gitconfig:ro
-      - ~/.ssh:/root/.ssh:ro
     restart: unless-stopped

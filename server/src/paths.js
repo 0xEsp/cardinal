@@ -5,6 +5,5 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const ROOT = path.resolve(__dirname, '..', '..');
 export const OS_DIR = path.join(ROOT, 'os');
-export const CARDS_DIR = path.join(ROOT, 'workspace', 'cards');
 export const DOCS_DIR = path.join(ROOT, 'workspace', 'docs');
-export const SESSIONS_DIR = path.join(CARDS_DIR, '.sessions');
+export const DATA_DIR = path.join(ROOT, 'data');

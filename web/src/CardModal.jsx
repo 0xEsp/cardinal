@@ -1,20 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { marked } from 'marked';
 import { api } from './api.js';
+import { copyText } from './clipboard.js';
 import AgentPanel from './AgentPanel.jsx';
 
 const STACKS = ['app', 'web', 'backend'];
 
 export default function CardModal({ card, config, onClose, onChanged, showToast }) {
   const [draft, setDraft] = useState(card.draft);
-  const [version, setVersion] = useState(card.version || '');
+  const [versions, setVersions] = useState({});
   const [tab, setTab] = useState('draft');
   const [defRaw, setDefRaw] = useState(false);
 
   useEffect(() => {
     setDraft(card.draft);
-    setVersion(card.version || '');
-  }, [card.id]);
+    setVersions(Object.fromEntries(card.stacks.map((s) => [s.name, s.version || ''])));
+  }, [card.id, card.stacks]);
 
   const save = async (patch) => {
     try {
@@ -25,9 +26,18 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
     }
   };
 
-  const toggleStack = (s) => {
-    const next = card.stack.includes(s) ? card.stack.filter((x) => x !== s) : [...card.stack, s];
-    save({ stack: next });
+  const activeStacks = card.stacks.map((s) => s.name);
+
+  const toggleStack = (name) => {
+    const next = activeStacks.includes(name)
+      ? card.stacks.filter((s) => s.name !== name)
+      : [...card.stacks, { name, version: null }];
+    save({ stacks: next });
+  };
+
+  const saveVersion = (name) => {
+    const next = card.stacks.map((s) => (s.name === name ? { ...s, version: versions[name]?.trim() || null } : s));
+    save({ stacks: next });
   };
 
   const handleDelete = async () => {
@@ -35,6 +45,21 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
     try {
       await api.deleteCard(card.id);
       onClose();
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  };
+
+  const copyDefinition = async () => {
+    await copyText(card.definition);
+    showToast('Definición copiada');
+  };
+
+  const copyAsPrompt = async () => {
+    try {
+      const { prompt } = await api.cardPrompt(card.id);
+      await copyText(prompt);
+      showToast('Prompt copiado — pégalo en el feature-builder del proyecto');
     } catch (e) {
       showToast(e.message, true);
     }
@@ -56,24 +81,27 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
         </div>
 
         <div className="props">
-          <span className="prop-label">Stack:</span>
-          {STACKS.map((s) => (
-            <button
-              key={s}
-              className={card.stack.includes(s) ? `chip stack-${s} on` : 'chip off'}
-              onClick={() => toggleStack(s)}
-            >
-              {s}
-            </button>
+          <span className="prop-label">Stacks:</span>
+          {STACKS.map((name) => (
+            <span key={name} className="stack-prop">
+              <button
+                className={activeStacks.includes(name) ? `chip stack-${name} on` : 'chip off'}
+                onClick={() => toggleStack(name)}
+              >
+                {name}
+              </button>
+              {activeStacks.includes(name) && (
+                <input
+                  className="version-input"
+                  value={versions[name] || ''}
+                  placeholder="vers."
+                  title={`Versión de ${name}`}
+                  onChange={(e) => setVersions({ ...versions, [name]: e.target.value })}
+                  onBlur={() => saveVersion(name)}
+                />
+              )}
+            </span>
           ))}
-          <span className="prop-label">Versión:</span>
-          <input
-            className="version-input"
-            value={version}
-            placeholder="—"
-            onChange={(e) => setVersion(e.target.value)}
-            onBlur={() => save({ version: version.trim() || null })}
-          />
           <span className="prop-label">Columna:</span>
           <span className="chip">{card.column}</span>
         </div>
@@ -102,12 +130,11 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
               {card.definition ? (
                 <>
                   <div className="def-toolbar">
+                    <button className="btn primary" onClick={copyAsPrompt}>⧉ Copiar como prompt</button>
                     <button className="btn ghost" onClick={() => setDefRaw(!defRaw)}>
                       {defRaw ? 'Ver renderizado' : 'Ver markdown'}
                     </button>
-                    <button className="btn ghost" onClick={() => { navigator.clipboard.writeText(card.definition); showToast('Definición copiada'); }}>
-                      ⧉ Copiar
-                    </button>
+                    <button className="btn ghost" onClick={copyDefinition}>⧉ Copiar md</button>
                   </div>
                   {defRaw ? (
                     <pre className="md-raw">{card.definition}</pre>
