@@ -222,7 +222,6 @@ button.chip { cursor: pointer; }
 .empty { color: var(--muted); font-style: italic; padding: 12px; }
 
 /* ---- elementos solo-móvil, ocultos en desktop ---- */
-.col-tabs { display: none; }
 .card-move { display: none; }
 .doc-back { display: none; }
 .filter-toggle { display: none; }
@@ -255,29 +254,20 @@ button.chip { cursor: pointer; }
   .filters { display: none; }
   .filters.open { display: flex; width: 100%; padding: 8px; background: var(--panel); border-radius: 8px; }
 
-  /* Kanban: una columna a la vez, elegida con pestañas */
-  .col-tabs {
-    display: flex; gap: 4px; overflow-x: auto;
+  /* Kanban: columnas a toda altura con scroll horizontal y snap (estilo Trello).
+     Se ve un asomo de la columna siguiente para invitar al swipe. */
+  .board {
+    overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 2px;
+    gap: 8px;
   }
-  .col-tab {
-    flex: 1; white-space: nowrap;
-    background: var(--panel); color: var(--muted);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 8px 10px; font-size: 13px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; gap: 6px;
+  .column {
+    flex: 0 0 86%;
+    min-width: 0;
+    scroll-snap-align: center;
   }
-  .col-tab.active { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
-  .col-tab-count {
-    background: var(--accent); color: #fff; border-radius: 10px;
-    font-size: 11px; padding: 0 6px; min-width: 18px; line-height: 16px;
-  }
-
-  .board { overflow: visible; }
-  .column { display: none; }
-  .column.mobile-active { display: flex; min-width: 0; }
-  .column-head { display: none; } /* redundante con la pestaña activa */
+  .column-head { font-size: 12px; padding: 10px 12px; }
   .column-body { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
 
   .card { padding: 12px; }
@@ -300,6 +290,7 @@ button.chip { cursor: pointer; }
   .draft-editor { font-size: 16px; }
   .agent-toolbar { flex-wrap: wrap; }
   .agent-toolbar select { flex: 1; min-width: 0; }
+  .agent-mode { flex-basis: 100%; font-size: 12px; }
   .def-toolbar { flex-wrap: wrap; justify-content: flex-start; }
 
   /* Docs: maestro-detalle en vez de split */

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.js';
 
 const COLUMNS = [
@@ -18,8 +18,16 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
   const [stackFilter, setStackFilter] = useState([]);
   const [versionFilter, setVersionFilter] = useState('');
   const [showDone, setShowDone] = useState(false);
-  const [activeCol, setActiveCol] = useState('todo'); // columna visible en móvil
   const [showFilters, setShowFilters] = useState(false);
+  const boardRef = useRef(null);
+
+  // En móvil el board arranca en "To Do", no en Backlog
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 720px)').matches && boardRef.current) {
+      const todoCol = boardRef.current.children[1];
+      if (todoCol) boardRef.current.scrollLeft = todoCol.offsetLeft - 8;
+    }
+  }, []);
 
   const versions = useMemo(
     () => [...new Set(cards.flatMap((c) => c.stacks.map((s) => s.version)).filter(Boolean))].sort(),
@@ -115,24 +123,7 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
         </div>
       </div>
 
-      {/* Pestañas de columna — solo visibles en móvil */}
-      <div className="col-tabs">
-        {COLUMNS.map((col) => {
-          const n = cards.filter((c) => c.column === col.id && matches(c)).length;
-          return (
-            <button
-              key={col.id}
-              className={activeCol === col.id ? 'col-tab active' : 'col-tab'}
-              onClick={() => setActiveCol(col.id)}
-            >
-              {col.short}
-              {n > 0 && <span className="col-tab-count">{n}</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="board">
+      <div className="board" ref={boardRef}>
         {COLUMNS.map((col, colIdx) => {
           const isDone = col.id === 'done';
           const colCards = cards.filter((c) => c.column === col.id && matches(c));
@@ -140,11 +131,7 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
           return (
             <div
               key={col.id}
-              className={[
-                'column',
-                overCol === col.id ? 'drag-over' : '',
-                activeCol === col.id ? 'mobile-active' : '',
-              ].join(' ')}
+              className={overCol === col.id ? 'column drag-over' : 'column'}
               onDragOver={(e) => { e.preventDefault(); setOverCol(col.id); }}
               onDragLeave={() => setOverCol(null)}
               onDrop={() => handleDrop(col.id)}
