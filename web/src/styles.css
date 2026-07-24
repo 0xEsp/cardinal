@@ -28,7 +28,7 @@ body {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.brand { font-weight: 700; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
 .topbar nav { display: flex; gap: 4px; }
 .git-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -45,6 +45,7 @@ body {
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px;
   padding: 6px 12px; cursor: pointer; font-size: 13px;
+  white-space: nowrap;
 }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: 0.5; cursor: default; }
@@ -92,8 +93,11 @@ body {
 .card {
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
   padding: 10px; cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  transition: border-color 0.15s, transform 0.1s;
 }
 .card:hover { border-color: var(--accent); }
+.card:active { transform: scale(0.99); }
 .card-title { font-weight: 500; margin-bottom: 6px; }
 .card-meta { display: flex; gap: 4px; flex-wrap: wrap; }
 
@@ -217,13 +221,98 @@ button.chip { cursor: pointer; }
 
 .empty { color: var(--muted); font-style: italic; padding: 12px; }
 
+/* ---- elementos solo-móvil, ocultos en desktop ---- */
+.col-tabs { display: none; }
+.card-move { display: none; }
+.doc-back { display: none; }
+.filter-toggle { display: none; }
+
 /* ---- responsive (móvil) ---- */
 @media (max-width: 720px) {
-  .board { flex-direction: column; overflow-y: auto; }
-  .column { min-height: 120px; }
-  .topbar { flex-wrap: wrap; }
-  .git-actions { margin-left: 0; }
+  body { font-size: 15px; }
+
+  /* iOS hace zoom al enfocar inputs con fuente < 16px */
+  input, select, textarea, button { font-size: 16px; }
+
+  .topbar {
+    padding: 8px 12px;
+    padding-top: calc(8px + env(safe-area-inset-top));
+    gap: 8px;
+  }
+  .brand { font-size: 15px; }
+  .brand-full { display: none; }
+  .git-status { display: none; }
+  .btn-label { display: none; }
+  .btn { padding: 8px 12px; }
+
+  /* Toolbar: crear card + botón de filtros; filtros colapsados por defecto */
+  .board-wrap { padding: 8px; gap: 8px; }
+  .board-toolbar { gap: 8px; }
+  .new-card { flex: 1; }
+  .new-card input { width: auto; flex: 1; min-width: 0; }
+  .filter-toggle { display: inline-block; white-space: nowrap; }
+  .filter-toggle.active { border-color: var(--accent-2); color: var(--accent-2); }
+  .filters { display: none; }
+  .filters.open { display: flex; width: 100%; padding: 8px; background: var(--panel); border-radius: 8px; }
+
+  /* Kanban: una columna a la vez, elegida con pestañas */
+  .col-tabs {
+    display: flex; gap: 4px; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .col-tab {
+    flex: 1; white-space: nowrap;
+    background: var(--panel); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .col-tab.active { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
+  .col-tab-count {
+    background: var(--accent); color: #fff; border-radius: 10px;
+    font-size: 11px; padding: 0 6px; min-width: 18px; line-height: 16px;
+  }
+
+  .board { overflow: visible; }
+  .column { display: none; }
+  .column.mobile-active { display: flex; min-width: 0; }
+  .column-head { display: none; } /* redundante con la pestaña activa */
+  .column-body { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+
+  .card { padding: 12px; }
+  .card-title { font-size: 15px; }
+  /* Mover cards con botones: el drag & drop no existe en táctil */
+  .card-move {
+    display: flex; justify-content: space-between; gap: 8px;
+    margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+  }
+  .move-btn { flex: 1; font-size: 13px; padding: 8px 4px; color: var(--muted); }
+  .move-btn:disabled { visibility: hidden; }
+
+  /* Modal a pantalla completa */
+  .modal-backdrop { padding: 0; }
+  .modal { width: 100%; height: 100%; max-height: 100dvh; border-radius: 0; border: none; }
+  .modal-head { padding-top: calc(12px + env(safe-area-inset-top)); }
+  .props { row-gap: 10px; }
+  .version-input { width: 56px; }
+  .modal-body { padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .draft-editor { font-size: 16px; }
+  .agent-toolbar { flex-wrap: wrap; }
+  .agent-toolbar select { flex: 1; min-width: 0; }
+  .def-toolbar { flex-wrap: wrap; justify-content: flex-start; }
+
+  /* Docs: maestro-detalle en vez de split */
   .docs-view { flex-direction: column; }
-  .docs-list { width: 100%; max-height: 40%; }
-  .modal { height: 100%; }
+  .docs-list { width: 100%; max-height: none; flex: 1; border-right: none; }
+  .docs-view.has-selection .docs-list { display: none; }
+  .doc-content { padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .docs-view.has-selection .doc-back { display: inline-block; margin-bottom: 12px; }
+  .doc-item { padding: 14px 16px; }
+}
+
+/* En táctil sin hover, los estados hover no deben "pegarse" */
+@media (hover: none) {
+  .card:hover { border-color: var(--border); }
+  .btn:hover:not(:disabled) { border-color: var(--border); }
 }

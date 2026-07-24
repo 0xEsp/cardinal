@@ -103,7 +103,15 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
             </span>
           ))}
           <span className="prop-label">Columna:</span>
-          <span className="chip">{card.column}</span>
+          <select
+            className="version-select"
+            value={card.column}
+            onChange={(e) => save({ column: e.target.value })}
+          >
+            {['backlog', 'todo', 'in-progress', 'done-dev', 'done'].map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </div>
 
         <div className="modal-tabs">

@@ -1,0 +1,13 @@
+{
+  "name": "JustGame Product OS",
+  "short_name": "Product OS",
+  "description": "Kanban de producto con agentes de IA para JustGame",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "icons": [
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

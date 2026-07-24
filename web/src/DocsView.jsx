@@ -19,7 +19,7 @@ export default function DocsView() {
   }, [selected]);
 
   return (
-    <div className="docs-view">
+    <div className={selected ? 'docs-view has-selection' : 'docs-view'}>
       <aside className="docs-list">
         <div className="docs-list-head">Documentación de producto</div>
         {error && <p className="empty">{error}</p>}
@@ -39,7 +39,10 @@ export default function DocsView() {
       </aside>
       <main className="doc-content">
         {selected ? (
-          <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(content) }} />
+          <>
+            <button className="btn doc-back" onClick={() => setSelected(null)}>← Documentos</button>
+            <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(content) }} />
+          </>
         ) : (
           <p className="empty">Selecciona un documento.</p>
         )}

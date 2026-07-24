@@ -29,6 +29,13 @@ export default function App() {
     refresh();
   }, [refresh, showToast]);
 
+  // Al volver a la app (cambio de pestaña/app en móvil), re-sincroniza el estado
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && refresh();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refresh]);
+
   const handlePull = async () => {
     setSyncing(true);
     try {
@@ -61,7 +68,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-dot" /> JustGame · Product OS
+          <span className="brand-dot" /> <span className="brand-full">JustGame · </span>Product OS
         </div>
         <nav>
           <button className={view === 'board' ? 'tab active' : 'tab'} onClick={() => setView('board')}>Board</button>
@@ -73,8 +80,8 @@ export default function App() {
               {gitStatus.branch} · {gitStatus.dirty > 0 ? `${gitStatus.dirty} cambios` : 'limpio'}
             </span>
           )}
-          <button className="btn" onClick={handlePull} disabled={syncing}>⬇ Pull</button>
-          <button className="btn" onClick={handlePush} disabled={syncing}>⬆ Push</button>
+          <button className="btn" onClick={handlePull} disabled={syncing}>⬇<span className="btn-label"> Pull</span></button>
+          <button className="btn" onClick={handlePush} disabled={syncing}>⬆<span className="btn-label"> Push</span></button>
         </div>
       </header>
 

@@ -2,11 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { api } from './api.js';
 
 const COLUMNS = [
-  { id: 'backlog', label: 'Backlog' },
-  { id: 'todo', label: 'To Do' },
-  { id: 'in-progress', label: 'In Progress' },
-  { id: 'done-dev', label: 'Done Dev' },
-  { id: 'done', label: 'Done' },
+  { id: 'backlog', label: 'Backlog', short: 'Backlog' },
+  { id: 'todo', label: 'To Do', short: 'To Do' },
+  { id: 'in-progress', label: 'In Progress', short: 'In Prog' },
+  { id: 'done-dev', label: 'Done Dev', short: 'D. Dev' },
+  { id: 'done', label: 'Done', short: 'Done' },
 ];
 
 const STACKS = ['app', 'web', 'backend'];
@@ -18,6 +18,8 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
   const [stackFilter, setStackFilter] = useState([]);
   const [versionFilter, setVersionFilter] = useState('');
   const [showDone, setShowDone] = useState(false);
+  const [activeCol, setActiveCol] = useState('todo'); // columna visible en móvil
+  const [showFilters, setShowFilters] = useState(false);
 
   const versions = useMemo(
     () => [...new Set(cards.flatMap((c) => c.stacks.map((s) => s.version)).filter(Boolean))].sort(),
@@ -33,19 +35,28 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
   const toggleStackFilter = (s) =>
     setStackFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
-  const handleDrop = async (colId) => {
+  const moveCard = async (card, colId) => {
+    if (card.column === colId) return;
+    try {
+      await api.updateCard(card.id, { column: colId });
+      onChanged();
+      if (colId === 'done') showToast(`"${card.title}" archivada en Done`);
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  };
+
+  const moveBy = (card, delta) => {
+    const idx = COLUMNS.findIndex((c) => c.id === card.column);
+    const target = COLUMNS[idx + delta];
+    if (target) moveCard(card, target.id);
+  };
+
+  const handleDrop = (colId) => {
     setOverCol(null);
     if (!dragId) return;
     const card = cards.find((c) => c.id === dragId);
-    if (card && card.column !== colId) {
-      try {
-        await api.updateCard(dragId, { column: colId });
-        onChanged();
-        if (colId === 'done') showToast(`"${card.title}" archivada en Done`);
-      } catch (e) {
-        showToast(e.message, true);
-      }
-    }
+    if (card) moveCard(card, colId);
     setDragId(null);
   };
 
@@ -62,6 +73,7 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
   };
 
   const doneCount = cards.filter((c) => c.column === 'done').length;
+  const filtersActive = stackFilter.length > 0 || versionFilter;
 
   return (
     <div className="board-wrap">
@@ -70,12 +82,17 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="Título de la nueva card… (se crea en Backlog)"
+            placeholder="Nueva card… (se crea en Backlog)"
           />
-          <button className="btn primary" type="submit">+ Card</button>
+          <button className="btn primary" type="submit">+</button>
         </form>
-        <div className="filters">
-          <span className="prop-label">Filtrar:</span>
+        <button
+          className={filtersActive ? 'btn filter-toggle active' : 'btn filter-toggle'}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          ⚙ Filtros{filtersActive ? ' •' : ''}
+        </button>
+        <div className={showFilters ? 'filters open' : 'filters'}>
           {STACKS.map((s) => (
             <button
               key={s}
@@ -92,20 +109,42 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
           <button className={showDone ? 'chip defined on' : 'chip off'} onClick={() => setShowDone(!showDone)}>
             {showDone ? '✕ ocultar done' : `ver done (${doneCount})`}
           </button>
-          {(stackFilter.length > 0 || versionFilter) && (
+          {filtersActive && (
             <button className="btn ghost" onClick={() => { setStackFilter([]); setVersionFilter(''); }}>limpiar</button>
           )}
         </div>
       </div>
-      <div className="board">
+
+      {/* Pestañas de columna — solo visibles en móvil */}
+      <div className="col-tabs">
         {COLUMNS.map((col) => {
+          const n = cards.filter((c) => c.column === col.id && matches(c)).length;
+          return (
+            <button
+              key={col.id}
+              className={activeCol === col.id ? 'col-tab active' : 'col-tab'}
+              onClick={() => setActiveCol(col.id)}
+            >
+              {col.short}
+              {n > 0 && <span className="col-tab-count">{n}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="board">
+        {COLUMNS.map((col, colIdx) => {
           const isDone = col.id === 'done';
           const colCards = cards.filter((c) => c.column === col.id && matches(c));
           const visible = isDone && !showDone ? [] : colCards;
           return (
             <div
               key={col.id}
-              className={overCol === col.id ? 'column drag-over' : 'column'}
+              className={[
+                'column',
+                overCol === col.id ? 'drag-over' : '',
+                activeCol === col.id ? 'mobile-active' : '',
+              ].join(' ')}
               onDragOver={(e) => { e.preventDefault(); setOverCol(col.id); }}
               onDragLeave={() => setOverCol(null)}
               onDrop={() => handleDrop(col.id)}
@@ -118,6 +157,9 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
                   <p className="empty done-hint">
                     Arrastra aquí para archivar.{doneCount > 0 ? ` ${doneCount} archivadas — usa "ver done".` : ''}
                   </p>
+                )}
+                {!isDone && visible.length === 0 && (
+                  <p className="empty done-hint">Sin cards{filtersActive ? ' (con estos filtros)' : ''}</p>
                 )}
                 {visible.map((card) => (
                   <div
@@ -135,6 +177,23 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
                         </span>
                       ))}
                       {card.definition && <span className="chip defined" title="Tiene definición generada">✦ def</span>}
+                    </div>
+                    {/* Mover sin drag & drop — solo visible en táctil */}
+                    <div className="card-move">
+                      <button
+                        className="btn move-btn"
+                        disabled={colIdx === 0}
+                        onClick={(e) => { e.stopPropagation(); moveBy(card, -1); }}
+                      >
+                        ◀ {colIdx > 0 ? COLUMNS[colIdx - 1].short : ''}
+                      </button>
+                      <button
+                        className="btn move-btn"
+                        disabled={colIdx === COLUMNS.length - 1}
+                        onClick={(e) => { e.stopPropagation(); moveBy(card, 1); }}
+                      >
+                        {colIdx < COLUMNS.length - 1 ? COLUMNS[colIdx + 1].short : ''} ▶
+                      </button>
                     </div>
                   </div>
                 ))}
