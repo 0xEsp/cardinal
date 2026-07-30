@@ -1,5 +1,5 @@
 import { getSessionData, saveSessionData } from './db.js';
-import { getCard, saveDefinition } from './cards.js';
+import { getCard, markDocumented, saveDefinition } from './cards.js';
 import { listDocs, readDoc, saveDoc } from './docs.js';
 import { buildSystemPrompt, toolsForMode, modeForColumn } from './prompt.js';
 
@@ -39,7 +39,13 @@ export function subscribe(cardId, res) {
   }
   s.listeners.add(res);
   // Replay del historial para que la consola muestre la conversación al reconectar
-  res.write(`data: ${JSON.stringify({ type: 'history', messages: publicMessages(s), running: s.running })}\n\n`);
+  res.write(`data: ${JSON.stringify({
+    type: 'history',
+    mode: s.mode,
+    model: s.model,
+    messages: publicMessages(s),
+    running: s.running,
+  })}\n\n`);
   res.on('close', () => s.listeners.delete(res));
 }
 
@@ -85,6 +91,7 @@ function execTool(cardId, mode, name, args) {
     case 'save_doc': {
       if (mode !== 'document') return 'ERROR: herramienta no disponible en este modo';
       const rel = saveDoc(args.path, args.content || '');
+      markDocumented(cardId);
       if (!s.savedFiles.includes(`workspace/docs/${rel}`)) s.savedFiles.push(`workspace/docs/${rel}`);
       emit(s, { type: 'saved', target: 'doc', path: rel });
       return `Documento guardado: ${rel}`;
@@ -203,6 +210,9 @@ export function startAgent(cardId, { model, onFinish }) {
   const card = getCard(cardId);
   const mode = modeForColumn(card.column);
   if (!mode) throw Object.assign(new Error('Una card en "done" no lanza agente'), { status: 400 });
+  if (mode === 'document' && !card.definition.trim()) {
+    throw Object.assign(new Error('La card necesita una Definición IA + antes de documentarse'), { status: 400 });
+  }
 
   const existing = getSession(cardId);
   if (existing?.running) throw Object.assign(new Error('Ya hay un agente corriendo para esta card'), { status: 409 });

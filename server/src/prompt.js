@@ -42,7 +42,7 @@ export function buildSystemPrompt(mode, card) {
     sections.push(`# Card a definir\n\nTítulo: ${card.title}\nPropiedades: ${props}\n\n## Borrador de Manu\n\n${card.draft || '(borrador vacío)'}`);
   } else {
     sections.push(
-      `# Card desarrollada (a documentar)\n\nTítulo: ${card.title}\nPropiedades: ${props}\n\n## Definición\n\n${card.definition || card.draft || '(sin definición)'}`
+      `# Card desarrollada (a documentar)\n\nTítulo: ${card.title}\nPropiedades: ${props}\nFecha de documentación: ${new Date().toISOString().slice(0, 10)}\n\n## Definición IA +\n\n${card.definition || '(sin definición)'}`
     );
   }
 

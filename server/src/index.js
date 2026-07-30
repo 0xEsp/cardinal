@@ -44,6 +44,13 @@ app.post('/api/cards', wrap((req) => cards.createCard(req.body)));
 app.get('/api/cards/:id', wrap((req) => cards.getCard(req.params.id)));
 app.get('/api/cards/:id/prompt', wrap((req) => ({ prompt: buildFeaturePrompt(cards.getCard(req.params.id)) })));
 app.put('/api/cards/:id', wrap((req) => cards.updateCard(req.params.id, req.body)));
+app.post('/api/cards/:id/move', wrap((req) => cards.moveCard(req.params.id, req.body)));
+app.get('/api/cards/:id/comments', wrap((req) => cards.listComments(req.params.id)));
+app.post('/api/cards/:id/comments', wrap((req) => cards.createComment(req.params.id, req.body)));
+app.delete('/api/cards/:id/comments/:commentId', wrap((req) => {
+  cards.deleteComment(req.params.id, req.params.commentId);
+  return { ok: true };
+}));
 app.delete('/api/cards/:id', wrap((req) => {
   cards.deleteCard(req.params.id);
   return { ok: true };

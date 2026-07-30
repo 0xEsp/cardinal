@@ -8,21 +8,26 @@ const STACKS = ['app', 'web', 'backend'];
 
 export default function CardModal({ card, config, onClose, onChanged, showToast }) {
   const [draft, setDraft] = useState(card.draft);
+  const [definitionDraft, setDefinitionDraft] = useState(card.definition);
   const [versions, setVersions] = useState({});
   const [tab, setTab] = useState('draft');
   const [defRaw, setDefRaw] = useState(false);
+  const [editingDefinition, setEditingDefinition] = useState(false);
 
   useEffect(() => {
     setDraft(card.draft);
+    setDefinitionDraft(card.definition);
     setVersions(Object.fromEntries(card.stacks.map((s) => [s.name, s.version || ''])));
-  }, [card.id, card.stacks]);
+  }, [card.id, card.draft, card.definition, card.stacks]);
 
   const save = async (patch) => {
     try {
       await api.updateCard(card.id, patch);
-      onChanged();
+      await onChanged();
+      return true;
     } catch (e) {
       showToast(e.message, true);
+      return false;
     }
   };
 
@@ -65,7 +70,47 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
     }
   };
 
-  const agentMode = card.column === 'done-dev' ? 'document' : card.column === 'done' ? null : 'define';
+  const saveDefinition = async () => {
+    if (definitionDraft === card.definition) {
+      setEditingDefinition(false);
+      return;
+    }
+    if (await save({ definition: definitionDraft })) {
+      setEditingDefinition(false);
+      showToast('Definición IA + actualizada');
+    }
+  };
+
+  if (card.column === 'done-dev') {
+    const documented = card.documentationStatus === 'documented';
+    return (
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="modal documentation-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-head">
+            <div className="documentation-heading">
+              <span className={documented ? 'documentation-state documented' : 'documentation-state pending'}>
+                {documented ? '✓ Documentada' : '● Pendiente de documentar'}
+              </span>
+              <h2>{card.title}</h2>
+            </div>
+            <button className="btn ghost" onClick={onClose}>✕</button>
+          </div>
+          <div className="modal-body">
+            <AgentPanel
+              card={card}
+              config={config}
+              mode="document"
+              documentOnly
+              onChanged={onChanged}
+              showToast={showToast}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const agentMode = card.column === 'done' ? null : 'define';
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -117,7 +162,10 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
         <div className="modal-tabs">
           <button className={tab === 'draft' ? 'tab active' : 'tab'} onClick={() => setTab('draft')}>Borrador</button>
           <button className={tab === 'definition' ? 'tab active' : 'tab'} onClick={() => setTab('definition')}>
-            Definición IA {card.definition ? '✦' : ''}
+            Definición IA + {card.definition ? '✦' : ''}
+          </button>
+          <button className={tab === 'comments' ? 'tab active' : 'tab'} onClick={() => setTab('comments')}>
+            Comentarios{card.commentCount ? ` ${card.commentCount}` : ''}
           </button>
           <button className={tab === 'agent' ? 'tab active' : 'tab'} onClick={() => setTab('agent')}>Agente</button>
         </div>
@@ -138,13 +186,38 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
               {card.definition ? (
                 <>
                   <div className="def-toolbar">
-                    <button className="btn primary" onClick={copyAsPrompt}>⧉ Copiar como prompt</button>
-                    <button className="btn ghost" onClick={() => setDefRaw(!defRaw)}>
-                      {defRaw ? 'Ver renderizado' : 'Ver markdown'}
-                    </button>
-                    <button className="btn ghost" onClick={copyDefinition}>⧉ Copiar md</button>
+                    {editingDefinition ? (
+                      <>
+                        <button className="btn primary" onClick={saveDefinition}>Guardar cambios</button>
+                        <button
+                          className="btn ghost"
+                          onClick={() => {
+                            setDefinitionDraft(card.definition);
+                            setEditingDefinition(false);
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="btn primary" onClick={copyAsPrompt}>⧉ Copiar como prompt</button>
+                        <button className="btn" onClick={() => setEditingDefinition(true)}>✎ Editar markdown</button>
+                        <button className="btn ghost" onClick={() => setDefRaw(!defRaw)}>
+                          {defRaw ? 'Ver renderizado' : 'Ver markdown'}
+                        </button>
+                        <button className="btn ghost" onClick={copyDefinition}>⧉ Copiar md</button>
+                      </>
+                    )}
                   </div>
-                  {defRaw ? (
+                  {editingDefinition ? (
+                    <textarea
+                      className="definition-editor"
+                      value={definitionDraft}
+                      onChange={(e) => setDefinitionDraft(e.target.value)}
+                      aria-label="Editar Definición IA + en markdown"
+                    />
+                  ) : defRaw ? (
                     <pre className="md-raw">{card.definition}</pre>
                   ) : (
                     <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(card.definition) }} />
@@ -156,11 +229,107 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
             </div>
           )}
 
+          {tab === 'comments' && (
+            <CommentsPanel card={card} onChanged={onChanged} showToast={showToast} />
+          )}
+
           {tab === 'agent' && (
             <AgentPanel card={card} config={config} mode={agentMode} onChanged={onChanged} showToast={showToast} />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CommentsPanel({ card, onChanged, showToast }) {
+  const [comments, setComments] = useState([]);
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const loadComments = async () => {
+    setLoading(true);
+    try {
+      setComments(await api.comments(card.id));
+    } catch (error) {
+      showToast(error.message, true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadComments();
+  }, [card.id]);
+
+  const addComment = async (event) => {
+    event.preventDefault();
+    if (!content.trim() || saving) return;
+    setSaving(true);
+    try {
+      const comment = await api.createComment(card.id, content);
+      setComments((current) => [...current, comment]);
+      setContent('');
+      await onChanged();
+    } catch (error) {
+      showToast(error.message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeComment = async (commentId) => {
+    if (!window.confirm('¿Eliminar este comentario?')) return;
+    try {
+      await api.deleteComment(card.id, commentId);
+      setComments((current) => current.filter((comment) => comment.id !== commentId));
+      await onChanged();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  };
+
+  return (
+    <div className="comments-panel">
+      <div className="comments-list">
+        {loading && <p className="empty">Cargando comentarios…</p>}
+        {!loading && comments.length === 0 && (
+          <p className="empty">Aún no hay comentarios. Añade contexto, decisiones o notas para esta card.</p>
+        )}
+        {comments.map((comment) => (
+          <article className="comment" key={comment.id}>
+            <div className="comment-avatar" aria-hidden="true">M</div>
+            <div className="comment-content">
+              <div className="comment-meta">
+                <strong>Manu</strong>
+                <time dateTime={comment.createdAt}>
+                  {new Date(comment.createdAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}
+                </time>
+                <button className="comment-delete" onClick={() => removeComment(comment.id)} aria-label="Eliminar comentario">
+                  ✕
+                </button>
+              </div>
+              <p>{comment.content}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+      <form className="comment-composer" onSubmit={addComment}>
+        <div className="comment-avatar" aria-hidden="true">M</div>
+        <textarea
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          placeholder="Añade un comentario…"
+          aria-label="Nuevo comentario"
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') addComment(event);
+          }}
+        />
+        <button className="btn primary" type="submit" disabled={!content.trim() || saving}>
+          {saving ? 'Guardando…' : 'Comentar'}
+        </button>
+      </form>
     </div>
   );
 }

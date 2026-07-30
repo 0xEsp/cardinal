@@ -17,16 +17,16 @@ Las **cards viven en SQLite** (propiedades, borrador, definición, sesiones de a
 
 El flujo:
 
-1. Creas una card en el board y escribes tu **borrador** con tus palabras.
+1. Creas una card en el board, escribes tu **borrador** con tus palabras y puedes añadir comentarios con contexto o decisiones. Las cards se pueden priorizar arrastrándolas verticalmente dentro de cada columna.
 2. Botón **▶ Definir card**: un agente (OpenRouter) coge el borrador + las reglas de `os/` + la documentación existente y genera la **definición completa** (producto + técnica + QA). Tu borrador nunca se toca. Puedes seguir iterando con el agente por chat.
 3. Botón **⧉ Copiar como prompt** en la pestaña Definición: copia la definición envuelta en la plantilla `os/feature-prompt.md`, lista para pegar en el feature-builder del proyecto de turno.
-4. Cuando el desarrollo termina, mueves la card a **Done Dev** y lanzas el agente de nuevo: ahora en **modo documentación** — crea o actualiza los `.md` de `workspace/docs/`.
+4. Cuando el desarrollo termina, mueves la card a **Done Dev**. Un icono muestra si está pendiente de documentar o documentada. Al abrirla aparece el botón **Documentar**, que lanza un agente específico para analizar la Definición IA + y crear o actualizar los `.md` de `workspace/docs/`.
 5. Mueves la card a **Done** para archivarla: la columna Done siempre se muestra vacía (es un sumidero); con "ver done (N)" del filtro puedes consultar las archivadas, también filtradas por stack/versión.
 6. Push desde el dashboard (o `AUTO_PUSH=true`) commitea `workspace/` + `os/` y sube al remoto.
 
 Cada card puede tocar varios **stacks (app/web/backend) y cada stack lleva su propia versión**; el board se filtra por ambos.
 
-El **modo del agente lo decide la columna**: `backlog/todo/in-progress` → definir · `done-dev` → documentar · `done` → nada.
+El **modo del agente lo decide la columna**: `backlog/todo/in-progress` → definir · `done-dev` → vista exclusiva de documentación · `done` → nada. El markdown de **Definición IA +** también se puede editar manualmente desde la card.
 
 ## Arranque en local
 

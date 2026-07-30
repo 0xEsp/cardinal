@@ -15,8 +15,11 @@ db.exec(`
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
     "column"   TEXT NOT NULL DEFAULT 'backlog',
+    position   INTEGER NOT NULL DEFAULT 0,
     draft      TEXT NOT NULL DEFAULT '',
     definition TEXT NOT NULL DEFAULT '',
+    documentation_status TEXT NOT NULL DEFAULT 'pending',
+    documented_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -32,7 +35,38 @@ db.exec(`
     card_id TEXT PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
     data    TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS card_comments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id    TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_card_comments_card_created
+    ON card_comments(card_id, created_at);
 `);
+
+// Migraciones incrementales para bases creadas por versiones anteriores.
+const cardColumns = new Set(db.prepare('PRAGMA table_info(cards)').all().map((column) => column.name));
+const addedPosition = !cardColumns.has('position');
+if (addedPosition) db.exec('ALTER TABLE cards ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+if (!cardColumns.has('documentation_status')) {
+  db.exec("ALTER TABLE cards ADD COLUMN documentation_status TEXT NOT NULL DEFAULT 'pending'");
+}
+if (!cardColumns.has('documented_at')) db.exec('ALTER TABLE cards ADD COLUMN documented_at TEXT');
+
+if (addedPosition) {
+  const columns = db.prepare('SELECT DISTINCT "column" AS name FROM cards').all();
+  const updatePosition = db.prepare('UPDATE cards SET position = ? WHERE id = ?');
+  for (const { name } of columns) {
+    const rows = db
+      .prepare('SELECT id FROM cards WHERE "column" = ? ORDER BY created_at DESC')
+      .all(name);
+    rows.forEach((row, index) => updatePosition.run(index, row.id));
+  }
+}
 
 export function getSessionData(cardId) {
   const row = db.prepare('SELECT data FROM agent_sessions WHERE card_id = ?').get(cardId);

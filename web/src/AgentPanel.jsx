@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 
-export default function AgentPanel({ card, config, mode, onChanged, showToast }) {
+export default function AgentPanel({ card, config, mode, documentOnly = false, onChanged, showToast }) {
   const [events, setEvents] = useState([]);
   const [running, setRunning] = useState(false);
   const [hasSession, setHasSession] = useState(false);
@@ -17,8 +17,13 @@ export default function AgentPanel({ card, config, mode, onChanged, showToast })
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data);
       if (ev.type === 'history') {
-        setHasSession(ev.messages.length > 0);
-        setRunning(ev.running);
+        const matchesMode = !documentOnly || ev.mode === 'document';
+        setHasSession(matchesMode && ev.messages.length > 0);
+        setRunning(matchesMode && ev.running);
+        if (!matchesMode) {
+          setEvents([]);
+          return;
+        }
         setEvents(
           ev.messages.flatMap((m) => {
             const out = [];
@@ -69,7 +74,7 @@ export default function AgentPanel({ card, config, mode, onChanged, showToast })
       }
     };
     return () => es.close();
-  }, [card.id]);
+  }, [card.id, documentOnly]);
 
   useEffect(() => {
     if (consoleRef.current) consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
@@ -95,6 +100,39 @@ export default function AgentPanel({ card, config, mode, onChanged, showToast })
   };
 
   if (!mode) return <p className="empty">Las cards en "done" no lanzan agente: su ciclo está completo.</p>;
+
+  if (documentOnly) {
+    const documented = card.documentationStatus === 'documented';
+    const canDocument = Boolean(card.definition.trim());
+    return (
+      <div className="agent-panel documentation-agent">
+        <div className="documentation-action">
+          <button className="btn primary document-button" onClick={launch} disabled={running || !config.hasApiKey || !canDocument}>
+            {running ? '⏳ Documentando…' : documented ? '↻ Documentar de nuevo' : '▶ Documentar'}
+          </button>
+          {!config.hasApiKey && <p className="empty">Configura OPENROUTER_API_KEY para lanzar el agente.</p>}
+          {!canDocument && <p className="empty">Esta card necesita una Definición IA + antes de documentarse.</p>}
+          {canDocument && !running && !events.length && (
+            <p className="documentation-help">
+              Un agente específico analizará la Definición IA + y la documentación existente para actualizar un documento o crear uno nuevo.
+            </p>
+          )}
+        </div>
+        {events.length > 0 && (
+          <div className="console" ref={consoleRef}>
+            {events.map((ev, i) => (
+              <div key={i} className={`ev ev-${ev.kind}`}>
+                {ev.kind === 'tool' && <span className="ev-badge">🔧</span>}
+                {ev.kind === 'saved' && <span className="ev-badge">💾</span>}
+                {ev.kind === 'error' && <span className="ev-badge">⚠</span>}
+                <pre>{ev.text}{ev.kind === 'streaming' ? '▌' : ''}</pre>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="agent-panel">

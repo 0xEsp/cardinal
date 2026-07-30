@@ -13,13 +13,32 @@ const STACKS = ['app', 'web', 'backend'];
 
 export default function Board({ cards, onOpen, onChanged, showToast }) {
   const [dragId, setDragId] = useState(null);
-  const [overCol, setOverCol] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
   const [newTitle, setNewTitle] = useState('');
   const [stackFilter, setStackFilter] = useState([]);
   const [versionFilter, setVersionFilter] = useState('');
   const [showDone, setShowDone] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const boardRef = useRef(null);
+  const dragIdRef = useRef(null);
+  const dropTargetRef = useRef(null);
+
+  const setActiveDrag = (cardId) => {
+    dragIdRef.current = cardId;
+    setDragId(cardId);
+  };
+
+  const setActiveDropTarget = (target) => {
+    dropTargetRef.current = target;
+    setDropTarget(target);
+  };
+
+  const clearDrag = () => {
+    dragIdRef.current = null;
+    dropTargetRef.current = null;
+    setDragId(null);
+    setDropTarget(null);
+  };
 
   // En móvil el board arranca en "To Do", no en Backlog
   useEffect(() => {
@@ -43,10 +62,9 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
   const toggleStackFilter = (s) =>
     setStackFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
-  const moveCard = async (card, colId) => {
-    if (card.column === colId) return;
+  const moveCard = async (card, colId, beforeId = null) => {
     try {
-      await api.updateCard(card.id, { column: colId });
+      await api.moveCard(card.id, colId, beforeId);
       onChanged();
       if (colId === 'done') showToast(`"${card.title}" archivada en Done`);
     } catch (e) {
@@ -60,12 +78,55 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
     if (target) moveCard(card, target.id);
   };
 
-  const handleDrop = (colId) => {
-    setOverCol(null);
-    if (!dragId) return;
-    const card = cards.find((c) => c.id === dragId);
-    if (card) moveCard(card, colId);
-    setDragId(null);
+  const handleDrop = (event, colId, beforeId = null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const activeId = dragIdRef.current || event.dataTransfer?.getData('text/plain');
+    clearDrag();
+    if (!activeId || activeId === beforeId) return;
+    const card = cards.find((c) => c.id === activeId);
+    if (card) moveCard(card, colId, beforeId);
+  };
+
+  const targetFromPoint = (clientX, clientY) => {
+    const element = document.elementFromPoint(clientX, clientY);
+    const cardElement = element?.closest('[data-card-id]');
+    const columnElement = element?.closest('[data-column-id]');
+    if (!columnElement) return null;
+    const colId = columnElement.dataset.columnId;
+    if (!cardElement) return { colId, beforeId: null, edge: 'end' };
+    const rect = cardElement.getBoundingClientRect();
+    const before = clientY < rect.top + rect.height / 2;
+    if (before) return { colId, beforeId: cardElement.dataset.cardId, edge: 'before' };
+    const nextCard = cardElement.nextElementSibling?.closest?.('[data-card-id]');
+    return { colId, beforeId: nextCard?.dataset.cardId || null, edge: nextCard ? 'before' : 'end' };
+  };
+
+  const handleTouchDragStart = (event, cardId) => {
+    if (event.pointerType === 'mouse') return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setActiveDrag(cardId);
+  };
+
+  const handleTouchDragMove = (event) => {
+    if (!dragIdRef.current || event.pointerType === 'mouse') return;
+    event.preventDefault();
+    const target = targetFromPoint(event.clientX, event.clientY);
+    if (target) setActiveDropTarget(target);
+  };
+
+  const handleTouchDragEnd = (event) => {
+    if (!dragIdRef.current || event.pointerType === 'mouse') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const activeId = dragIdRef.current;
+    const target = dropTargetRef.current || targetFromPoint(event.clientX, event.clientY);
+    clearDrag();
+    if (!target || activeId === target.beforeId) return;
+    const card = cards.find((item) => item.id === activeId);
+    if (card) moveCard(card, target.colId, target.beforeId);
   };
 
   const handleCreate = async (e) => {
@@ -131,15 +192,21 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
           return (
             <div
               key={col.id}
-              className={overCol === col.id ? 'column drag-over' : 'column'}
-              onDragOver={(e) => { e.preventDefault(); setOverCol(col.id); }}
-              onDragLeave={() => setOverCol(null)}
-              onDrop={() => handleDrop(col.id)}
+              className={dropTarget?.colId === col.id ? 'column drag-over' : 'column'}
+              data-column-id={col.id}
             >
               <div className="column-head">
                 {col.label} <span className="count">{colCards.length}</span>
               </div>
-              <div className="column-body">
+              <div
+                className={dropTarget?.colId === col.id && dropTarget.beforeId === null ? 'column-body drop-at-end' : 'column-body'}
+                onDragOver={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  e.preventDefault();
+                  setActiveDropTarget({ colId: col.id, beforeId: null, edge: 'end' });
+                }}
+                onDrop={(e) => handleDrop(e, col.id)}
+              >
                 {isDone && !showDone && (
                   <p className="empty done-hint">
                     Arrastra aquí para archivar.{doneCount > 0 ? ` ${doneCount} archivadas — usa "ver done".` : ''}
@@ -148,15 +215,55 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
                 {!isDone && visible.length === 0 && (
                   <p className="empty done-hint">Sin cards{filtersActive ? ' (con estos filtros)' : ''}</p>
                 )}
-                {visible.map((card) => (
+                {visible.map((card, cardIdx) => (
                   <div
                     key={card.id}
-                    className="card"
+                    className={[
+                      'card',
+                      dragId === card.id ? 'dragging' : '',
+                      dropTarget?.colId === col.id && dropTarget.beforeId === card.id ? 'drop-before' : '',
+                    ].filter(Boolean).join(' ')}
+                    data-card-id={card.id}
                     draggable
-                    onDragStart={() => setDragId(card.id)}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', card.id);
+                      setActiveDrag(card.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const before = e.clientY < rect.top + rect.height / 2;
+                      setActiveDropTarget({
+                        colId: col.id,
+                        beforeId: before ? card.id : visible[cardIdx + 1]?.id || null,
+                        edge: before || visible[cardIdx + 1] ? 'before' : 'end',
+                      });
+                    }}
+                    onDrop={(e) => handleDrop(
+                      e,
+                      col.id,
+                      dropTargetRef.current?.colId === col.id ? dropTargetRef.current.beforeId : card.id
+                    )}
+                    onDragEnd={clearDrag}
                     onClick={() => onOpen(card.id)}
                   >
-                    <div className="card-title">{card.title}</div>
+                    <div className="card-title-row">
+                      <span
+                        className="drag-handle"
+                        title="Arrastrar para priorizar"
+                        aria-label="Arrastrar para priorizar"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => handleTouchDragStart(e, card.id)}
+                        onPointerMove={handleTouchDragMove}
+                        onPointerUp={handleTouchDragEnd}
+                        onPointerCancel={handleTouchDragEnd}
+                      >
+                        ⠿
+                      </span>
+                      <div className="card-title">{card.title}</div>
+                    </div>
                     <div className="card-meta">
                       {card.stacks.map((s) => (
                         <span key={s.name} className={`chip stack-${s.name}`}>
@@ -164,6 +271,20 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
                         </span>
                       ))}
                       {card.definition && <span className="chip defined" title="Tiene definición generada">✦ def</span>}
+                      {card.commentCount > 0 && (
+                        <span className="chip comments" title={`${card.commentCount} comentarios`}>
+                          ◉ {card.commentCount}
+                        </span>
+                      )}
+                      {card.column === 'done-dev' && (
+                        <span
+                          className={`documentation-icon ${card.documentationStatus === 'documented' ? 'documented' : 'pending'}`}
+                          title={card.documentationStatus === 'documented' ? 'Documentación actualizada' : 'Pendiente de documentar'}
+                          aria-label={card.documentationStatus === 'documented' ? 'Documentación actualizada' : 'Pendiente de documentar'}
+                        >
+                          {card.documentationStatus === 'documented' ? '✓ Doc' : '◷ Doc'}
+                        </span>
+                      )}
                     </div>
                     {/* Mover sin drag & drop — solo visible en táctil */}
                     <div className="card-move">
