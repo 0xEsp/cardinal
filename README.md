@@ -95,7 +95,7 @@ Desde `/home/0xEsp/justgame-product-os`:
 bash scripts/load-raspberry-image.sh releases/justgame-product-os-raspberry-<fecha>.tar.gz
 ```
 
-El script carga la imagen y ejecuta `docker compose up -d --no-build`. La base de datos permanece en `data/` y no se modifica al reemplazar el contenedor.
+El script carga la imagen y ejecuta `docker compose up -d --no-build --force-recreate`. La base de datos permanece en `data/` y no se modifica al reemplazar el contenedor.
 
 Antes de una actualización importante, puede hacerse una copia manual:
 

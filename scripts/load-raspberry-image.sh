@@ -24,8 +24,8 @@ cd "$ROOT_DIR"
 echo "Cargando imagen desde $ARCHIVE..."
 docker load --input "$ARCHIVE"
 
-echo "Arrancando Product OS sin reconstruir la imagen..."
-docker compose up -d --no-build
+echo "Arrancando Product OS con el contenedor recreado y sin reconstruir la imagen..."
+docker compose up -d --no-build --force-recreate
 
 echo
 docker compose ps
