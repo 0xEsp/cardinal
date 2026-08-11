@@ -1,16 +1,19 @@
 services:
   product-os:
-    build: .
+    # La imagen se construye en el ordenador y se carga en la Raspberry.
+    # PRODUCT_OS_IMAGE puede fijar una etiqueta concreta por despliegue.
+    image: ${PRODUCT_OS_IMAGE:-justgame-product-os:raspberry}
     ports:
       - "4400:4400"
     env_file: .env
     volumes:
-      # Datos fuera del contenedor: sobreviven a rebuilds de la imagen.
-      # - data/       → SQLite (cards + sesiones de agente)
-      # - workspace/  → documentación de producto (.md, versionada en git)
-      # - os/         → reglas editables
-      - ./data:/app/data
+      # La SQLite vive en el host y no forma parte de la imagen.
+      # En la Raspberry se fija a /home/0xEsp/justgame-product-os/data.
+      - ${PRODUCT_OS_DATA_DIR:-./data}:/app/data
+      # Estos mounts son deliberados: el host es la fuente de verdad de
+      # documentación y reglas mientras la aplicación está funcionando.
       - ./workspace:/app/workspace
       - ./os:/app/os
+      # Se conserva para los botones de Git de workspace/ y os/.
       - ./.git:/app/.git
     restart: unless-stopped

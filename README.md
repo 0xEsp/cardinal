@@ -39,14 +39,80 @@ cd web && npm install && npm run dev      # UI en :5173 (proxy a la API)
 
 Para producción: `cd web && npm run build` y el server sirve el build en `http://localhost:4400`.
 
-## En la Raspberry (Docker)
+## Despliegue en la Raspberry (Docker)
 
-```bash
-cp .env.example .env   # con tu API key
-docker compose up -d --build
+La Raspberry ejecuta una imagen ya construida. No reconstruye el proyecto ni necesita tener el código fuente actualizado para ejecutar una nueva versión.
+
+La carpeta de despliegue se mantiene en:
+
+```text
+/home/0xEsp/justgame-product-os
 ```
 
-Dashboard en `http://<ip-de-la-raspberry>:4400`, accesible desde móvil u ordenador en la misma red. El `workspace/`, el `os/` y el `.git` se montan como volúmenes: los datos sobreviven a rebuilds y el push funciona con las credenciales del host.
+En la Raspberry, configura `.env` una sola vez:
+
+```env
+PRODUCT_OS_IMAGE=justgame-product-os:raspberry
+PRODUCT_OS_DATA_DIR=/home/0xEsp/justgame-product-os/data
+```
+
+`PRODUCT_OS_DATA_DIR` es la fuente de verdad de las cards y las sesiones de agente. No copies la carpeta `data/` desde el ordenador ni la incluyas en una imagen.
+
+### Construir y exportar desde el ordenador
+
+Para una Raspberry de 64 bits (`uname -m` devuelve `aarch64`):
+
+```bash
+bash scripts/build-raspberry-image.sh
+```
+
+El script construye la imagen para `linux/arm64` y genera un archivo comprimido en `releases/`, por ejemplo:
+
+```text
+releases/justgame-product-os-raspberry-20260811-153000.tar.gz
+```
+
+En la Raspberry, crea una carpeta de releases una sola vez:
+
+```bash
+mkdir -p /home/0xEsp/justgame-product-os/releases
+```
+
+Transfiere ese archivo a esa carpeta. Por ejemplo:
+
+```bash
+scp releases/justgame-product-os-raspberry-*.tar.gz \
+  0xEsp@<ip-de-la-raspberry>:/home/0xEsp/justgame-product-os/releases/
+```
+
+### Cargar y arrancar en la Raspberry
+
+Desde `/home/0xEsp/justgame-product-os`:
+
+```bash
+bash scripts/load-raspberry-image.sh releases/justgame-product-os-raspberry-<fecha>.tar.gz
+```
+
+El script carga la imagen y ejecuta `docker compose up -d --no-build`. La base de datos permanece en `data/` y no se modifica al reemplazar el contenedor.
+
+Antes de una actualización importante, puede hacerse una copia manual:
+
+```bash
+cd /home/0xEsp/justgame-product-os
+docker compose stop
+tar -czf /home/0xEsp/product-os-backup-$(date +%F).tar.gz data
+docker compose start
+```
+
+El dashboard queda disponible en `http://<ip-de-la-raspberry>:4400`.
+
+### Sincronización de `os/` y `workspace/`
+
+`workspace/` y `os/` siguen siendo directorios montados desde la Raspberry. Esto permite que la documentación generada por los agentes sobreviva a las actualizaciones de imagen.
+
+Si modificas `os/` o `workspace/` desde el ordenador, actualiza primero esas carpetas en la Raspberry mediante el botón `Pull` existente o mediante una transferencia de archivos. Después carga la nueva imagen. No copies `data/`.
+
+El botón `Push` continúa versionando únicamente `workspace/` y `os/`; el código de la aplicación se actualiza mediante la imagen Docker.
 
 ## Migrar la documentación de Notion
 
@@ -60,5 +126,7 @@ Exporta tus páginas de Notion como markdown y déjalas en `workspace/docs/` (ke
 | `OPENROUTER_MODEL` | Modelo por defecto |
 | `MODELS` | Modelos del selector, separados por coma |
 | `PORT` | Puerto del servidor (4400) |
+| `PRODUCT_OS_IMAGE` | Etiqueta de la imagen Docker que ejecutará Compose |
+| `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/justgame-product-os/data` |
 | `AUTO_PUSH` | `true` → commit+push automático del workspace al terminar un agente |
 | `GIT_USERNAME` / `GIT_TOKEN` | Credenciales HTTPS para pull/push (fine-grained token con Contents:write) |

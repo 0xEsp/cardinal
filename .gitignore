@@ -3,4 +3,5 @@ web/dist/
 .env
 .DS_Store
 data/
+releases/
 .playwright-mcp/

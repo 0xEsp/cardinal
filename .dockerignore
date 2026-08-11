@@ -3,6 +3,7 @@ node_modules
 **/node_modules
 web/dist
 data
+releases
 .env
 .playwright-mcp
 .DS_Store
