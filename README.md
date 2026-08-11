@@ -8,25 +8,27 @@ Sistema operativo de producto para JustGame: un dashboard local (kanban + agente
 os/               ← las "reglas": cómo se define una card, criterios de QA, guía de documentación,
                     plantilla del prompt para el feature-builder (feature-prompt.md)
 workspace/docs/   ← documentación de producto en .md (la fuente de verdad, versionada en git)
-data/             ← SQLite (cards + sesiones de agente; fuera de git, volumen en Docker)
+data/             ← SQLite (cards + sesiones + historial de agentes; fuera de git, volumen en Docker)
 server/           ← API Node/Express + agente OpenRouter (streaming SSE + tool-use)
-web/              ← dashboard React (kanban, modal de card, consola de agente, visor de docs)
+web/              ← dashboard React (kanban, modal de card, consola de agente, editor de docs)
 ```
 
 Las **cards viven en SQLite** (propiedades, borrador, definición, sesiones de agente) usando el `node:sqlite` nativo de Node 22 — sin dependencias compiladas. La **documentación de producto sigue siendo markdown en git**, que es lo que consumen los agentes y lo que migras desde Notion.
 
 El flujo:
 
-1. Creas una card en el board, escribes tu **borrador** con tus palabras y puedes añadir comentarios con contexto o decisiones. Las cards se pueden priorizar arrastrándolas verticalmente dentro de cada columna.
-2. Botón **▶ Definir card**: un agente (OpenRouter) coge el borrador + las reglas de `os/` + la documentación existente y genera la **definición completa** (producto + técnica + QA). Tu borrador nunca se toca. Puedes seguir iterando con el agente por chat.
+1. Creas una card en el board, escribes tu **borrador** con tus palabras y puedes añadir comentarios como notas privadas. Las cards se pueden priorizar arrastrándolas verticalmente dentro de cada columna.
+2. Botón **▶ Definir card**: un agente (OpenRouter) busca en `workspace/docs/`, lee los documentos relevantes, aplica las reglas de `os/` y genera la **definición completa** (producto + técnica + QA). Una validación estructural y una revisión independiente deben aprobarla antes de guardarla. Tu borrador nunca se toca. Puedes seguir iterando con el agente por chat.
 3. Botón **⧉ Copiar como prompt** en la pestaña Definición: copia la definición envuelta en la plantilla `os/feature-prompt.md`, lista para pegar en el feature-builder del proyecto de turno.
-4. Cuando el desarrollo termina, mueves la card a **Done Dev**. Un icono muestra si está pendiente de documentar o documentada. Al abrirla aparece el botón **Documentar**, que lanza un agente específico para analizar la Definición IA + y crear o actualizar los `.md` de `workspace/docs/`.
+4. Cuando el desarrollo termina, mueves la card a **Done Dev**. Un icono muestra si está pendiente de documentar o documentada. Al abrirla aparece el botón **Documentar**, que lanza un agente específico para buscar contexto, analizar la Definición IA +, revisar el resultado y crear o actualizar los `.md` de `workspace/docs/`.
 5. Mueves la card a **Done** para archivarla: la columna Done siempre se muestra vacía (es un sumidero); con "ver done (N)" del filtro puedes consultar las archivadas, también filtradas por stack/versión.
-6. Push desde el dashboard (o `AUTO_PUSH=true`) commitea `workspace/` + `os/` y sube al remoto.
+6. La pestaña **Docs** permite editar y guardar manualmente cualquier `.md` de `workspace/docs/`. El botón **Push** desde el dashboard (o `AUTO_PUSH=true` después de una ejecución correcta del agente) commitea `workspace/` + `os/` y sube al remoto.
 
 Cada card puede tocar varios **stacks (app/web/backend) y cada stack lleva su propia versión**; el board se filtra por ambos.
 
 El **modo del agente lo decide la columna**: `backlog/todo/in-progress` → definir · `done-dev` → vista exclusiva de documentación · `done` → nada. El markdown de **Definición IA +** también se puede editar manualmente desde la card.
+
+La pestaña **Ejecuciones** de cada card conserva el modelo utilizado, la revisión de contexto, las búsquedas y lecturas de documentación, los archivos escritos y el resultado de validación/revisión.
 
 ## Arranque en local
 

@@ -24,6 +24,8 @@ export const api = {
   deleteCard: (id) => req(`/api/cards/${id}`, { method: 'DELETE' }),
   docs: () => req('/api/docs'),
   docContent: (path) => req(`/api/docs/content?path=${encodeURIComponent(path)}`),
+  saveDoc: (path, content) => req('/api/docs/content', json('PUT', { path, content })),
+  agentRuns: (cardId) => req(`/api/cards/${cardId}/agent-runs`),
   startAgent: (cardId, model) => req(`/api/agent/${cardId}/start`, json('POST', { model })),
   sendMessage: (cardId, content) => req(`/api/agent/${cardId}/message`, json('POST', { content })),
   session: (cardId) => req(`/api/agent/${cardId}`),

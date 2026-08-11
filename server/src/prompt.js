@@ -36,6 +36,10 @@ export function buildSystemPrompt(mode, card) {
     '# Documentación de producto existente (workspace/docs/)\n\n' +
       (docs.length ? docs.map((d) => `- ${d.path} — ${d.title}`).join('\n') : '(aún no hay documentos)')
   );
+  sections.push(
+    '# Investigación obligatoria\n\n' +
+      'La lista anterior solo sirve como índice. Antes de definir o documentar, usa `search_docs` con conceptos del borrador o de la Definición IA + y después `read_doc` sobre cada documento relevante. No uses comentarios de la card como contexto de trabajo.'
+  );
 
   const props = `stacks: ${formatStacks(card)} · columna: ${card.column}`;
   if (mode === 'define') {
@@ -88,16 +92,46 @@ export function toolsForMode(mode) {
       },
     },
   };
+  const searchDocsTool = {
+    type: 'function',
+    function: {
+      name: 'search_docs',
+      description:
+        'Busca términos o conceptos en el contenido completo de workspace/docs/. Devuelve los documentos relevantes y fragmentos para decidir cuáles leer con read_doc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Términos de producto que quieres localizar, por ejemplo "colección plataformas"' },
+          limit: { type: 'integer', minimum: 1, maximum: 20, description: 'Máximo de resultados (por defecto 8)' },
+        },
+        required: ['query'],
+      },
+    },
+  };
   if (mode === 'define') {
     return [
       listDocsTool,
+      searchDocsTool,
       readDocTool,
+      {
+        type: 'function',
+        function: {
+          name: 'review_definition',
+          description:
+            'Ejecuta una revisión estructural y semántica independiente de una definición candidata. Es obligatorio usarla antes de save_definition; no guarda nada.',
+          parameters: {
+            type: 'object',
+            properties: { content: { type: 'string', description: 'Definición completa candidata en markdown' } },
+            required: ['content'],
+          },
+        },
+      },
       {
         type: 'function',
         function: {
           name: 'save_definition',
           description:
-            'Guarda la definición completa de la card (markdown). Sobreescribe la definición anterior si existía. No toca el borrador.',
+            'Guarda la definición completa de la card (markdown). Solo funciona después de que review_definition haya aprobado exactamente este contenido. Sobreescribe la definición anterior si existía y no toca el borrador.',
           parameters: {
             type: 'object',
             properties: { content: { type: 'string', description: 'Definición completa en markdown' } },
@@ -109,13 +143,30 @@ export function toolsForMode(mode) {
   }
   return [
     listDocsTool,
+    searchDocsTool,
     readDocTool,
     {
       type: 'function',
       function: {
-        name: 'save_doc',
+        name: 'review_doc',
         description:
-          'Guarda (crea o sobreescribe) un documento de producto en workspace/docs/. Para actualizar uno existente, léelo antes con read_doc y guarda el contenido completo integrando los cambios.',
+          'Ejecuta una revisión estructural y semántica independiente de un documento candidato. Es obligatorio usarla antes de save_doc; no guarda nada.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Ruta relativa del .md que se quiere revisar' },
+            content: { type: 'string', description: 'Contenido completo candidato en markdown' },
+          },
+          required: ['path', 'content'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'save_doc',
+          description:
+            'Guarda (crea o sobreescribe) un documento de producto en workspace/docs/. Solo funciona después de que review_doc haya aprobado exactamente este path y contenido. Para actualizar uno existente, léelo antes con read_doc y guarda el contenido completo integrando los cambios.',
         parameters: {
           type: 'object',
           properties: {

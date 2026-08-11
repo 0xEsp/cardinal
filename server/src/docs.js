@@ -3,9 +3,15 @@ import path from 'node:path';
 import { DOCS_DIR } from './paths.js';
 
 function safeDocPath(name) {
-  const clean = path.normalize(name).replace(/^(\.\.[/\\])+/, '');
+  if (typeof name !== 'string' || !name.trim()) throw Object.assign(new Error('ruta requerida'), { status: 400 });
+  if (path.isAbsolute(name) || name.split(/[\\/]/).includes('..')) {
+    throw Object.assign(new Error('ruta inválida'), { status: 400 });
+  }
+  const clean = path.normalize(name);
   const file = path.resolve(DOCS_DIR, clean);
-  if (!file.startsWith(DOCS_DIR)) throw Object.assign(new Error('ruta inválida'), { status: 400 });
+  if (file !== DOCS_DIR && !file.startsWith(`${DOCS_DIR}${path.sep}`)) {
+    throw Object.assign(new Error('ruta inválida'), { status: 400 });
+  }
   if (!file.endsWith('.md')) throw Object.assign(new Error('solo ficheros .md'), { status: 400 });
   return file;
 }
@@ -31,9 +37,44 @@ export function readDoc(name) {
   return fs.readFileSync(file, 'utf8');
 }
 
+export function searchDocs(query, limit = 8) {
+  const terms = normalize(query).split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+
+  const maxResults = Math.min(Math.max(Number(limit) || 8, 1), 20);
+  return listDocs()
+    .map((doc) => {
+      const content = readDoc(doc.path);
+      const normalized = normalize(content);
+      const matches = terms.filter((term) => normalized.includes(term));
+      if (matches.length !== terms.length) return null;
+
+      const firstTermIndex = Math.min(...terms.map((term) => normalized.indexOf(term)).filter((index) => index >= 0));
+      const start = Math.max(0, firstTermIndex - 180);
+      const end = Math.min(content.length, firstTermIndex + 360);
+      const snippet = content.slice(start, end).replace(/\s+/g, ' ').trim();
+      return {
+        path: doc.path,
+        title: doc.title,
+        matches: matches.length,
+        snippet: `${start > 0 ? '…' : ''}${snippet}${end < content.length ? '…' : ''}`,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.matches - a.matches || a.path.localeCompare(b.path))
+    .slice(0, maxResults);
+}
+
 export function saveDoc(name, content) {
   const file = safeDocPath(name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content.endsWith('\n') ? content : content + '\n');
   return path.relative(DOCS_DIR, file);
+}
+
+function normalize(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 }

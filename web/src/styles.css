@@ -167,6 +167,8 @@ button.chip { cursor: pointer; }
   padding: 12px; color: var(--text); font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 13px; line-height: 1.6;
 }
+.draft-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.draft-save-state { color: #ffb84d; font-size: 11px; }
 
 .definition-view { flex: 1; overflow-y: auto; }
 .def-toolbar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 8px; }
@@ -204,6 +206,7 @@ button.chip { cursor: pointer; }
 .ev-user pre { color: var(--accent-2); }
 .ev-tool pre { color: #ffb84d; }
 .ev-saved pre { color: var(--accent-2); font-weight: 600; }
+.ev-validation pre, .ev-review pre { color: var(--accent-2); }
 .ev-error pre { color: var(--danger); }
 .ev-info pre { color: var(--muted); font-style: italic; }
 
@@ -215,6 +218,7 @@ button.chip { cursor: pointer; }
 
 /* ---- documentación de una card Done Dev ---- */
 .documentation-modal { width: min(720px, 100%); height: min(560px, 100%); }
+.documentation-body { overflow-y: auto; gap: 16px; }
 .documentation-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .documentation-heading h2 { font-size: clamp(16px, 2.5vw, 20px); line-height: 1.3; }
 .documentation-state {
@@ -230,6 +234,34 @@ button.chip { cursor: pointer; }
 }
 .document-button { min-width: min(240px, 100%); padding: 10px 18px; }
 .documentation-help { max-width: 520px; color: var(--muted); text-align: center; line-height: 1.5; }
+
+/* ---- historial de agentes ---- */
+.agent-runs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.agent-runs.compact { flex: 0 0 190px; min-height: 130px; border-top: 1px solid var(--border); padding-top: 12px; }
+.agent-runs-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.agent-runs-head h3 { margin: 0 0 3px; font-size: 14px; }
+.agent-runs-head p { margin: 0; color: var(--muted); font-size: 12px; }
+.agent-runs-list { display: flex; flex-direction: column; gap: 8px; }
+.agent-run { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--panel-2); }
+.agent-run.status-failed { border-color: color-mix(in srgb, var(--danger) 60%, var(--border)); }
+.agent-run-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.agent-run-top time { margin-left: auto; color: var(--muted); font-size: 11px; }
+.agent-run-status { color: var(--accent-2); font-size: 11px; }
+.status-failed .agent-run-status { color: var(--danger); }
+.agent-run-model { color: var(--muted); font: 11px ui-monospace, Menlo, monospace; margin-top: 4px; overflow-wrap: anywhere; }
+.agent-run-details { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.agent-run-details span { overflow-wrap: anywhere; }
+.agent-run-details b { color: var(--text); font-weight: 500; }
+.agent-run-summary { margin: 8px 0 0; font-size: 12px; }
+.agent-run-error { margin: 8px 0 0; color: var(--danger); font-size: 12px; white-space: pre-wrap; }
+
+/* ---- edición de documentación ---- */
+.doc-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; max-width: 1000px; }
+.doc-toolbar strong { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); overflow-wrap: anywhere; }
+.doc-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.doc-unsaved { color: #ffb84d; font-size: 11px; }
+.doc-editor { flex: 1; min-height: 0; width: 100%; resize: none; max-width: 1000px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; color: var(--text); font: 13px/1.6 ui-monospace, 'SF Mono', Menlo, monospace; }
+.doc-raw { max-width: 1000px; overflow: auto; }
 
 /* ---- comentarios ---- */
 .comments-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -384,6 +416,8 @@ button.chip { cursor: pointer; }
   .doc-content { padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .docs-view.has-selection .doc-back { display: inline-block; margin-bottom: 12px; }
   .doc-item { padding: 14px 16px; }
+  .doc-toolbar { align-items: stretch; flex-direction: column; margin-bottom: 12px; }
+  .doc-toolbar-actions { justify-content: flex-start; }
 }
 
 /* En táctil sin hover, los estados hover no deben "pegarse" */

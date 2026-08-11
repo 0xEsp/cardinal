@@ -1,26 +1,48 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { marked } from 'marked';
 import { api } from './api.js';
 import { copyText } from './clipboard.js';
 import AgentPanel from './AgentPanel.jsx';
+import AgentRuns from './AgentRuns.jsx';
 
 const STACKS = ['app', 'web', 'backend'];
 
 export default function CardModal({ card, config, onClose, onChanged, showToast }) {
   const [draft, setDraft] = useState(card.draft);
+  const [draftDirty, setDraftDirty] = useState(false);
   const [definitionDraft, setDefinitionDraft] = useState(card.definition);
   const [versions, setVersions] = useState({});
   const [tab, setTab] = useState('draft');
   const [defRaw, setDefRaw] = useState(false);
   const [editingDefinition, setEditingDefinition] = useState(false);
+  const draftRef = useRef(card.draft);
+  const draftDirtyRef = useRef(false);
 
   useEffect(() => {
+    draftRef.current = card.draft;
+    draftDirtyRef.current = false;
+    setDraftDirty(false);
     setDraft(card.draft);
     setDefinitionDraft(card.definition);
     setVersions(Object.fromEntries(card.stacks.map((s) => [s.name, s.version || ''])));
-  }, [card.id, card.draft, card.definition, card.stacks]);
+  }, [card.id]);
 
-  const save = async (patch) => {
+  useEffect(() => {
+    if (!draftDirtyRef.current) {
+      draftRef.current = card.draft;
+      setDraft(card.draft);
+    }
+  }, [card.draft]);
+
+  useEffect(() => {
+    if (!editingDefinition) setDefinitionDraft(card.definition);
+  }, [card.definition, editingDefinition]);
+
+  useEffect(() => {
+    setVersions(Object.fromEntries(card.stacks.map((s) => [s.name, s.version || ''])));
+  }, [card.stacks]);
+
+  const save = useCallback(async (patch) => {
     try {
       await api.updateCard(card.id, patch);
       await onChanged();
@@ -29,7 +51,35 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
       showToast(e.message, true);
       return false;
     }
-  };
+  }, [card.id, onChanged, showToast]);
+
+  const persistDraft = useCallback(async (value) => {
+    if (!draftDirtyRef.current) return true;
+    if (value === card.draft) {
+      draftDirtyRef.current = false;
+      setDraftDirty(false);
+      return true;
+    }
+    const ok = await save({ draft: value });
+    if (ok && draftRef.current === value) {
+      draftDirtyRef.current = false;
+      setDraftDirty(false);
+    }
+    return ok;
+  }, [card.draft, save]);
+
+  useEffect(() => {
+    const persistWhenHidden = () => {
+      if (document.visibilityState === 'hidden') void persistDraft(draftRef.current);
+    };
+    const persistOnPageHide = () => void persistDraft(draftRef.current);
+    document.addEventListener('visibilitychange', persistWhenHidden);
+    window.addEventListener('pagehide', persistOnPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', persistWhenHidden);
+      window.removeEventListener('pagehide', persistOnPageHide);
+    };
+  }, [persistDraft]);
 
   const activeStacks = card.stacks.map((s) => s.name);
 
@@ -95,7 +145,7 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
             </div>
             <button className="btn ghost" onClick={onClose}>✕</button>
           </div>
-          <div className="modal-body">
+          <div className="modal-body documentation-body">
             <AgentPanel
               card={card}
               config={config}
@@ -104,6 +154,7 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
               onChanged={onChanged}
               showToast={showToast}
             />
+            <AgentRuns cardId={card.id} compact />
           </div>
         </div>
       </div>
@@ -168,17 +219,26 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
             Comentarios{card.commentCount ? ` ${card.commentCount}` : ''}
           </button>
           <button className={tab === 'agent' ? 'tab active' : 'tab'} onClick={() => setTab('agent')}>Agente</button>
+          <button className={tab === 'runs' ? 'tab active' : 'tab'} onClick={() => setTab('runs')}>Ejecuciones</button>
         </div>
 
         <div className="modal-body">
           {tab === 'draft' && (
-            <textarea
-              className="draft-editor"
-              value={draft}
-              placeholder="Escribe aquí tu borrador: qué quieres, casuísticas que se te ocurran, notas técnicas…"
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => draft !== card.draft && save({ draft })}
-            />
+            <div className="draft-view">
+              <textarea
+                className="draft-editor"
+                value={draft}
+                placeholder="Escribe aquí tu borrador: qué quieres, casuísticas que se te ocurran, notas técnicas…"
+                onChange={(e) => {
+                  draftRef.current = e.target.value;
+                  draftDirtyRef.current = true;
+                  setDraftDirty(true);
+                  setDraft(e.target.value);
+                }}
+                onBlur={() => void persistDraft(draftRef.current)}
+              />
+              {draftDirty && <span className="draft-save-state">Cambios pendientes · se guardarán al salir o al cambiar de pestaña</span>}
+            </div>
           )}
 
           {tab === 'definition' && (
@@ -236,6 +296,8 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
           {tab === 'agent' && (
             <AgentPanel card={card} config={config} mode={agentMode} onChanged={onChanged} showToast={showToast} />
           )}
+
+          {tab === 'runs' && <AgentRuns cardId={card.id} />}
         </div>
       </div>
     </div>

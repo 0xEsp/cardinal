@@ -52,6 +52,26 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
           ...prev.map((x) => (x.kind === 'streaming' ? { ...x, kind: 'assistant' } : x)),
           { kind: 'tool', text: describeTool(ev.name, ev.args) },
         ]);
+      } else if (ev.type === 'validation') {
+        setEvents((prev) => [
+          ...prev,
+          {
+            kind: ev.validation?.ok ? 'validation' : 'error',
+            text: ev.validation?.ok
+              ? `✓ Validación estructural correcta${ev.validation.warnings?.length ? ` · ${ev.validation.warnings.length} aviso(s)` : ''}`
+              : `Validación bloqueada: ${(ev.validation?.errors || []).join(' ')}`,
+          },
+        ]);
+      } else if (ev.type === 'review') {
+        const review = ev.review || {};
+        const issues = (review.issues || []).map((issue) => issue.message).join(' ');
+        setEvents((prev) => [
+          ...prev,
+          {
+            kind: review.ok ? 'review' : 'error',
+            text: review.ok ? `✓ Revisión aprobada${review.summary ? ` · ${review.summary}` : ''}` : `Revisión pendiente: ${issues || review.summary || 'corrige el candidato y repite'}`,
+          },
+        ]);
       } else if (ev.type === 'saved') {
         onChanged();
         setEvents((prev) => [...prev, { kind: 'saved', text: ev.target === 'definition' ? '✦ Definición guardada en la card' : `✦ Documento guardado: ${ev.path}` }]);
@@ -182,8 +202,11 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
 
 function describeTool(name, args) {
   if (name === 'save_definition') return `save_definition (${args.chars ?? '?'} caracteres)`;
+  if (name === 'review_definition') return `review_definition (${args.chars ?? '?'} caracteres)`;
   if (name === 'save_doc') return `save_doc → ${args.path ?? '?'}`;
+  if (name === 'review_doc') return `review_doc → ${args.path ?? '?'}`;
   if (name === 'read_doc') return `read_doc → ${args.path ?? '?'}`;
   if (name === 'list_docs') return 'list_docs';
+  if (name === 'search_docs') return `search_docs → ${args.query ?? '?'}`;
   return name;
 }

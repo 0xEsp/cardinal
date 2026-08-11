@@ -92,7 +92,7 @@ export default function App() {
       {view === 'board' ? (
         <Board cards={cards} onOpen={setOpenCardId} onChanged={refresh} showToast={showToast} />
       ) : (
-        <DocsView />
+        <DocsView onSaved={refresh} showToast={showToast} />
       )}
 
       {openCard && config && (

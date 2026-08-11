@@ -59,6 +59,11 @@ app.delete('/api/cards/:id', wrap((req) => {
 // ---- docs ----
 app.get('/api/docs', wrap(() => docs.listDocs()));
 app.get('/api/docs/content', wrap((req) => ({ path: req.query.path, content: docs.readDoc(req.query.path) })));
+app.put('/api/docs/content', wrap((req) => {
+  const content = typeof req.body?.content === 'string' ? req.body.content : '';
+  const path = docs.saveDoc(req.body?.path, content);
+  return { path, content: content.endsWith('\n') ? content : `${content}\n` };
+}));
 
 // ---- agent ----
 const onFinish = async () => {
@@ -77,6 +82,10 @@ app.post('/api/agent/:cardId/message', wrap((req) => {
   return { ok: true };
 }));
 app.get('/api/agent/:cardId', wrap((req) => agent.sessionInfo(req.params.cardId)));
+app.get('/api/cards/:id/agent-runs', wrap((req) => {
+  cards.getCard(req.params.id);
+  return agent.listRuns(req.params.id);
+}));
 app.get('/api/agent/:cardId/stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
