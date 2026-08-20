@@ -1,7 +1,7 @@
 {
-  "name": "JustGame Product OS",
+  "name": "Gotty Product OS",
   "short_name": "Product OS",
-  "description": "Kanban de producto con agentes de IA para JustGame",
+  "description": "Kanban de producto con agentes de IA para Gotty",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0e1116",

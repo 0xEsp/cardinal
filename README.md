@@ -1,6 +1,6 @@
-# JustGame · Product OS
+# Gotty · Product OS
 
-Sistema operativo de producto para JustGame: un dashboard local (kanban + agentes de IA + documentación) con las cards en SQLite y la documentación de producto como markdown versionado en git.
+Sistema operativo de producto para Gotty: un dashboard local (kanban + agentes de IA + documentación) con las cards en SQLite y la documentación de producto como markdown versionado en git.
 
 ## Cómo funciona
 
@@ -48,14 +48,14 @@ La Raspberry ejecuta una imagen ya construida. No reconstruye el proyecto ni nec
 La carpeta de despliegue se mantiene en:
 
 ```text
-/home/0xEsp/justgame-product-os
+/home/0xEsp/gotty-product-os
 ```
 
 En la Raspberry, configura `.env` una sola vez:
 
 ```env
-PRODUCT_OS_IMAGE=justgame-product-os:raspberry
-PRODUCT_OS_DATA_DIR=/home/0xEsp/justgame-product-os/data
+PRODUCT_OS_IMAGE=gotty-product-os:raspberry
+PRODUCT_OS_DATA_DIR=/home/0xEsp/gotty-product-os/data
 ```
 
 `PRODUCT_OS_DATA_DIR` es la fuente de verdad de las cards y las sesiones de agente. No copies la carpeta `data/` desde el ordenador ni la incluyas en una imagen.
@@ -71,28 +71,28 @@ bash scripts/build-raspberry-image.sh
 El script construye la imagen para `linux/arm64` y genera un archivo comprimido en `releases/`, por ejemplo:
 
 ```text
-releases/justgame-product-os-raspberry-20260811-153000.tar.gz
+releases/gotty-product-os-raspberry-20260811-153000.tar.gz
 ```
 
 En la Raspberry, crea una carpeta de releases una sola vez:
 
 ```bash
-mkdir -p /home/0xEsp/justgame-product-os/releases
+mkdir -p /home/0xEsp/gotty-product-os/releases
 ```
 
 Transfiere ese archivo a esa carpeta. Por ejemplo:
 
 ```bash
-scp releases/justgame-product-os-raspberry-*.tar.gz \
-  0xEsp@<ip-de-la-raspberry>:/home/0xEsp/justgame-product-os/releases/
+scp releases/gotty-product-os-raspberry-*.tar.gz \
+  0xEsp@<ip-de-la-raspberry>:/home/0xEsp/gotty-product-os/releases/
 ```
 
 ### Cargar y arrancar en la Raspberry
 
-Desde `/home/0xEsp/justgame-product-os`:
+Desde `/home/0xEsp/gotty-product-os`:
 
 ```bash
-bash scripts/load-raspberry-image.sh releases/justgame-product-os-raspberry-<fecha>.tar.gz
+bash scripts/load-raspberry-image.sh releases/gotty-product-os-raspberry-<fecha>.tar.gz
 ```
 
 El script carga la imagen y ejecuta `docker compose up -d --no-build --force-recreate`. La base de datos permanece en `data/` y no se modifica al reemplazar el contenedor.
@@ -100,7 +100,7 @@ El script carga la imagen y ejecuta `docker compose up -d --no-build --force-rec
 Antes de una actualización importante, puede hacerse una copia manual:
 
 ```bash
-cd /home/0xEsp/justgame-product-os
+cd /home/0xEsp/gotty-product-os
 docker compose stop
 tar -czf /home/0xEsp/product-os-backup-$(date +%F).tar.gz data
 docker compose start
@@ -129,6 +129,6 @@ Exporta tus páginas de Notion como markdown y déjalas en `workspace/docs/` (ke
 | `MODELS` | Modelos del selector, separados por coma |
 | `PORT` | Puerto del servidor (4400) |
 | `PRODUCT_OS_IMAGE` | Etiqueta de la imagen Docker que ejecutará Compose |
-| `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/justgame-product-os/data` |
+| `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/gotty-product-os/data` |
 | `AUTO_PUSH` | `true` → commit+push automático del workspace al terminar un agente |
 | `GIT_USERNAME` / `GIT_TOKEN` | Credenciales HTTPS para pull/push (fine-grained token con Contents:write) |

@@ -68,7 +68,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-dot" /> <span className="brand-full">JustGame · </span>Product OS
+          <span className="brand-dot" /> <span className="brand-full">Gotty · </span>Product OS
         </div>
         <nav>
           <button className={view === 'board' ? 'tab active' : 'tab'} onClick={() => setView('board')}>Board</button>

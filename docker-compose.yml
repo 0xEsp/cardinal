@@ -2,13 +2,13 @@ services:
   product-os:
     # La imagen se construye en el ordenador y se carga en la Raspberry.
     # PRODUCT_OS_IMAGE puede fijar una etiqueta concreta por despliegue.
-    image: ${PRODUCT_OS_IMAGE:-justgame-product-os:raspberry}
+    image: ${PRODUCT_OS_IMAGE:-gotty-product-os:raspberry}
     ports:
       - "4400:4400"
     env_file: .env
     volumes:
       # La SQLite vive en el host y no forma parte de la imagen.
-      # En la Raspberry se fija a /home/0xEsp/justgame-product-os/data.
+      # En la Raspberry se fija a /home/0xEsp/gotty-product-os/data.
       - ${PRODUCT_OS_DATA_DIR:-./data}:/app/data
       # Estos mounts son deliberados: el host es la fuente de verdad de
       # documentación y reglas mientras la aplicación está funcionando.
