@@ -8,7 +8,6 @@ export default function DocsView({ onSaved, showToast }) {
   const [content, setContent] = useState('');
   const [savedContent, setSavedContent] = useState('');
   const [editing, setEditing] = useState(false);
-  const [raw, setRaw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -113,9 +112,6 @@ export default function DocsView({ onSaved, showToast }) {
                 ) : (
                   <>
                     <button className="btn primary" onClick={() => setEditing(true)} disabled={loading}>✎ Editar markdown</button>
-                    <button className="btn ghost" onClick={() => setRaw(!raw)} disabled={loading}>
-                      {raw ? 'Ver renderizado' : 'Ver markdown'}
-                    </button>
                   </>
                 )}
               </div>
@@ -129,8 +125,6 @@ export default function DocsView({ onSaved, showToast }) {
                 onChange={(e) => setContent(e.target.value)}
                 aria-label={`Editar ${selected} en markdown`}
               />
-            ) : raw ? (
-              <pre className="md-raw doc-raw">{content}</pre>
             ) : (
               <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(content) }} />
             )}

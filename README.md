@@ -26,7 +26,7 @@ El flujo:
 
 Cada card puede tocar varios **stacks (app/web/backend) y cada stack lleva su propia versión**; el board se filtra por ambos.
 
-El **modo del agente lo decide la columna**: `backlog/todo/in-progress` → definir · `done-dev` → vista exclusiva de documentación · `done` → nada. El markdown de **Definición IA +** también se puede editar manualmente desde la card.
+El **modo del agente lo decide la columna**: `backlog/todo/in-progress` → definir · `done-dev` → vista exclusiva de documentación · `done` → nada. El markdown de **Definición IA +** también se puede editar manualmente desde la card. El agente continúa hasta guardar el resultado y después queda disponible para nuevas instrucciones; **Detener agente** cierra la sesión activa.
 
 La pestaña **Ejecuciones** de cada card conserva el modelo utilizado, la revisión de contexto, las búsquedas y lecturas de documentación, los archivos escritos y el resultado de validación/revisión.
 
@@ -48,14 +48,14 @@ La Raspberry ejecuta una imagen ya construida. No reconstruye el proyecto ni nec
 La carpeta de despliegue se mantiene en:
 
 ```text
-/home/0xEsp/gotty-product-os
+/home/0xEsp/justgame-product-os
 ```
 
 En la Raspberry, configura `.env` una sola vez:
 
 ```env
 PRODUCT_OS_IMAGE=gotty-product-os:raspberry
-PRODUCT_OS_DATA_DIR=/home/0xEsp/gotty-product-os/data
+PRODUCT_OS_DATA_DIR=/home/0xEsp/justgame-product-os/data
 ```
 
 `PRODUCT_OS_DATA_DIR` es la fuente de verdad de las cards y las sesiones de agente. No copies la carpeta `data/` desde el ordenador ni la incluyas en una imagen.
@@ -74,33 +74,41 @@ El script construye la imagen para `linux/arm64` y genera un archivo comprimido 
 releases/gotty-product-os-raspberry-20260811-153000.tar.gz
 ```
 
-En la Raspberry, crea una carpeta de releases una sola vez:
+Para construir, transferir y arrancar en un solo paso desde este ordenador:
 
 ```bash
-mkdir -p /home/0xEsp/gotty-product-os/releases
+bash scripts/deploy-raspberry-image.sh
+```
+
+SSH/SCP solicitarán las credenciales cuando correspondan. El script copia la imagen, `docker-compose.yml` y `load-raspberry-image.sh`; nunca copia `.env` ni `data/`.
+
+Para hacerlo manualmente, crea una carpeta de releases en la Raspberry una sola vez:
+
+```bash
+mkdir -p /home/0xEsp/justgame-product-os/releases
 ```
 
 Transfiere ese archivo a esa carpeta. Por ejemplo:
 
 ```bash
 scp releases/gotty-product-os-raspberry-*.tar.gz \
-  0xEsp@<ip-de-la-raspberry>:/home/0xEsp/gotty-product-os/releases/
+  0xEsp@192.168.50.108:/home/0xEsp/justgame-product-os/releases/
 ```
 
 ### Cargar y arrancar en la Raspberry
 
-Desde `/home/0xEsp/gotty-product-os`:
+Desde `/home/0xEsp/justgame-product-os`:
 
 ```bash
 bash scripts/load-raspberry-image.sh releases/gotty-product-os-raspberry-<fecha>.tar.gz
 ```
 
-El script carga la imagen y ejecuta `docker compose up -d --no-build --force-recreate`. La base de datos permanece en `data/` y no se modifica al reemplazar el contenedor.
+El script exige la SQLite existente en el volumen de datos, detiene el servicio para cerrar el WAL, guarda una copia de `data/` en `releases/`, carga la imagen y ejecuta `docker compose up -d --no-build --force-recreate`. La base de datos permanece en su ruta del host.
 
 Antes de una actualización importante, puede hacerse una copia manual:
 
 ```bash
-cd /home/0xEsp/gotty-product-os
+cd /home/0xEsp/justgame-product-os
 docker compose stop
 tar -czf /home/0xEsp/product-os-backup-$(date +%F).tar.gz data
 docker compose start
@@ -110,11 +118,13 @@ El dashboard queda disponible en `http://<ip-de-la-raspberry>:4400`.
 
 ### Sincronización de `os/` y `workspace/`
 
-`workspace/` y `os/` siguen siendo directorios montados desde la Raspberry. Esto permite que la documentación generada por los agentes sobreviva a las actualizaciones de imagen.
+`workspace/` y `os/` siguen siendo directorios montados desde la Raspberry. Esto permite que la documentación generada por los agentes sobreviva a las actualizaciones de imagen. El checkout completo del host también se monta en `/repo` para que Git opere sobre los archivos reales de la Raspberry; el servidor continúa ejecutando el código de la imagen.
 
-Si modificas `os/` o `workspace/` desde el ordenador, actualiza primero esas carpetas en la Raspberry mediante el botón `Pull` existente o mediante una transferencia de archivos. Después carga la nueva imagen. No copies `data/`.
+Si modificas `os/` o `workspace/docs/` desde el ordenador, haz commit y push. En la Raspberry pulsa **Pull** en el dashboard: los cambios se verán sin reconstruir ni reiniciar la imagen. Si hay cambios locales incompatibles, resuélvelos antes del pull. No copies `data/`.
 
 El botón `Push` continúa versionando únicamente `workspace/` y `os/`; el código de la aplicación se actualiza mediante la imagen Docker.
+
+La skill global `product-os-docs` vive en `~/.agents/skills/` y tiene enlaces simbólicos en `~/.codex/skills/`, `~/.claude/skills/` y `~/.cursor/skills/`. Permite leer y actualizar docs y reglas desde cualquier carpeta del ordenador. La skill de despliegue `deploy-product-os` está en `.agents/skills/` del proyecto, también con enlaces para Codex, Claude y Cursor.
 
 ## Migrar la documentación de Notion
 
@@ -129,6 +139,6 @@ Exporta tus páginas de Notion como markdown y déjalas en `workspace/docs/` (ke
 | `MODELS` | Modelos del selector, separados por coma |
 | `PORT` | Puerto del servidor (4400) |
 | `PRODUCT_OS_IMAGE` | Etiqueta de la imagen Docker que ejecutará Compose |
-| `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/gotty-product-os/data` |
+| `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/justgame-product-os/data` |
 | `AUTO_PUSH` | `true` → commit+push automático del workspace al terminar un agente |
 | `GIT_USERNAME` / `GIT_TOKEN` | Credenciales HTTPS para pull/push (fine-grained token con Contents:write) |

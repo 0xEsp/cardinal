@@ -13,7 +13,7 @@ fi
 SAFE_TAG="${IMAGE_TAG//\//-}"
 SAFE_TAG="${SAFE_TAG//:/-}"
 OUTPUT_DIR="$ROOT_DIR/releases"
-OUTPUT_FILE="$OUTPUT_DIR/${SAFE_TAG}-$(date +%Y%m%d-%H%M%S).tar.gz"
+OUTPUT_FILE="${OUTPUT_FILE:-$OUTPUT_DIR/${SAFE_TAG}-$(date +%Y%m%d-%H%M%S).tar.gz}"
 
 mkdir -p "$OUTPUT_DIR"
 

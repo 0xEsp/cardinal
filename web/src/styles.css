@@ -50,6 +50,7 @@ body {
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
 .btn.ghost { background: none; border: none; }
 
 .banner { background: #4d3800; color: #ffd766; padding: 8px 16px; font-size: 13px; }
@@ -170,10 +171,10 @@ button.chip { cursor: pointer; }
 .draft-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
 .draft-save-state { color: #ffb84d; font-size: 11px; }
 
-.definition-view { flex: 1; overflow-y: auto; }
+.definition-view { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .def-toolbar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 8px; }
 .definition-editor {
-  width: 100%; min-height: calc(100% - 48px); resize: vertical;
+  flex: 1; min-height: 0; width: 100%; resize: none;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
   padding: 12px; color: var(--text); font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 13px; line-height: 1.6;
@@ -248,6 +249,8 @@ button.chip { cursor: pointer; }
 .agent-run-top time { margin-left: auto; color: var(--muted); font-size: 11px; }
 .agent-run-status { color: var(--accent-2); font-size: 11px; }
 .status-failed .agent-run-status { color: var(--danger); }
+.status-waiting_input .agent-run-status { color: #ffb84d; }
+.status-interrupted .agent-run-status { color: var(--danger); }
 .agent-run-model { color: var(--muted); font: 11px ui-monospace, Menlo, monospace; margin-top: 4px; overflow-wrap: anywhere; }
 .agent-run-details { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; color: var(--muted); font-size: 11px; }
 .agent-run-details span { overflow-wrap: anywhere; }
@@ -308,7 +311,7 @@ button.chip { cursor: pointer; }
 .doc-item:hover, .doc-item.active { background: var(--panel-2); }
 .doc-title { color: var(--text); font-size: 14px; }
 .doc-path { color: var(--muted); font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
-.doc-content { flex: 1; overflow-y: auto; padding: 24px 32px; }
+.doc-content { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 32px; display: flex; flex-direction: column; }
 
 /* ---- markdown ---- */
 .md { max-width: 780px; line-height: 1.65; }

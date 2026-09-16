@@ -13,7 +13,6 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
   const [definitionDraft, setDefinitionDraft] = useState(card.definition);
   const [versions, setVersions] = useState({});
   const [tab, setTab] = useState('draft');
-  const [defRaw, setDefRaw] = useState(false);
   const [editingDefinition, setEditingDefinition] = useState(false);
   const draftRef = useRef(card.draft);
   const draftDirtyRef = useRef(false);
@@ -263,9 +262,6 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
                       <>
                         <button className="btn primary" onClick={copyAsPrompt}>⧉ Copiar como prompt</button>
                         <button className="btn" onClick={() => setEditingDefinition(true)}>✎ Editar markdown</button>
-                        <button className="btn ghost" onClick={() => setDefRaw(!defRaw)}>
-                          {defRaw ? 'Ver renderizado' : 'Ver markdown'}
-                        </button>
                         <button className="btn ghost" onClick={copyDefinition}>⧉ Copiar md</button>
                       </>
                     )}
@@ -277,8 +273,6 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
                       onChange={(e) => setDefinitionDraft(e.target.value)}
                       aria-label="Editar Definición IA + en markdown"
                     />
-                  ) : defRaw ? (
-                    <pre className="md-raw">{card.definition}</pre>
                   ) : (
                     <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(card.definition) }} />
                   )}

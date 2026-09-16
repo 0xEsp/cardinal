@@ -18,6 +18,7 @@ RUN cd server && npm install --omit=dev
 COPY --from=web-build /build/dist ./web/dist
 # El .git montado pertenece al usuario del host; sin esto git lo rechaza
 RUN git config --global --add safe.directory /app
+RUN git config --global --add safe.directory /repo
 
 EXPOSE 4400
 CMD ["node", "server/src/index.js"]

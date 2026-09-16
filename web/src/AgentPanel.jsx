@@ -4,6 +4,7 @@ import { api } from './api.js';
 export default function AgentPanel({ card, config, mode, documentOnly = false, onChanged, showToast }) {
   const [events, setEvents] = useState([]);
   const [running, setRunning] = useState(false);
+  const [active, setActive] = useState(false);
   const [hasSession, setHasSession] = useState(false);
   const [model, setModel] = useState(config.defaultModel);
   const [input, setInput] = useState('');
@@ -20,6 +21,8 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
         const matchesMode = !documentOnly || ev.mode === 'document';
         setHasSession(matchesMode && ev.messages.length > 0);
         setRunning(matchesMode && ev.running);
+        setActive(matchesMode && ev.active);
+        if (matchesMode && ev.model) setModel(ev.model);
         if (!matchesMode) {
           setEvents([]);
           return;
@@ -80,9 +83,11 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
         setEvents((prev) => [...prev, { kind: 'user', text: ev.text }]);
       } else if (ev.type === 'started') {
         setHasSession(true);
+        setActive(true);
         setEvents([{ kind: 'info', text: `Agente lanzado · modo ${ev.mode} · ${ev.model}` }]);
       } else if (ev.type === 'status') {
         setRunning(ev.running);
+        setActive(ev.active);
         if (!ev.running) {
           setEvents((prev) => prev.map((x) => (x.kind === 'streaming' ? { ...x, kind: 'assistant' } : x)));
           streamText.current = '';
@@ -108,6 +113,14 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
     }
   };
 
+  const stop = async () => {
+    try {
+      await api.stopAgent(card.id);
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  };
+
   const send = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -127,9 +140,13 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
     return (
       <div className="agent-panel documentation-agent">
         <div className="documentation-action">
-          <button className="btn primary document-button" onClick={launch} disabled={running || !config.hasApiKey || !canDocument}>
-            {running ? '⏳ Documentando…' : documented ? '↻ Documentar de nuevo' : '▶ Documentar'}
+          <select value={model} onChange={(e) => setModel(e.target.value)} disabled={active} aria-label="Modelo del agente">
+            {config.models.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <button className="btn primary document-button" onClick={launch} disabled={running || active || !config.hasApiKey || !canDocument}>
+            {active ? running ? '⏳ Documentando…' : 'Esperando instrucciones' : documented ? '↻ Documentar de nuevo' : '▶ Documentar'}
           </button>
+          {active && <button className="btn danger" onClick={stop}>■ Detener agente</button>}
           {!config.hasApiKey && <p className="empty">Configura OPENROUTER_API_KEY para lanzar el agente.</p>}
           {!canDocument && <p className="empty">Esta card necesita una Definición IA + antes de documentarse.</p>}
           {canDocument && !running && !events.length && (
@@ -150,6 +167,12 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
             ))}
           </div>
         )}
+        {active && !running && (
+          <form className="agent-input" onSubmit={send}>
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Da una indicación para continuar…" />
+            <button className="btn" type="submit" disabled={!input.trim()}>Enviar</button>
+          </form>
+        )}
       </div>
     );
   }
@@ -157,12 +180,13 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
   return (
     <div className="agent-panel">
       <div className="agent-toolbar">
-        <select value={model} onChange={(e) => setModel(e.target.value)} disabled={running}>
+        <select value={model} onChange={(e) => setModel(e.target.value)} disabled={active}>
           {config.models.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
-        <button className="btn primary" onClick={launch} disabled={running || !config.hasApiKey}>
-          {running ? '⏳ Trabajando…' : hasSession ? '↻ Relanzar' : mode === 'define' ? '▶ Definir card' : '▶ Documentar'}
+        <button className="btn primary" onClick={launch} disabled={running || active || !config.hasApiKey}>
+          {active ? running ? '⏳ Trabajando…' : 'Esperando instrucciones' : hasSession ? '↻ Relanzar' : mode === 'define' ? '▶ Definir card' : '▶ Documentar'}
         </button>
+        {active && <button className="btn danger" onClick={stop}>■ Detener agente</button>}
         <span className="agent-mode">
           modo: <b>{mode === 'define' ? 'definición' : 'documentación'}</b> (según columna)
         </span>
@@ -192,9 +216,9 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={hasSession ? 'Itera con el agente: "cambia X", "añade la casuística Y"…' : 'Lanza el agente primero'}
-          disabled={running || !hasSession}
+          disabled={running || !active}
         />
-        <button className="btn" type="submit" disabled={running || !hasSession}>Enviar</button>
+        <button className="btn" type="submit" disabled={running || !active || !input.trim()}>Enviar</button>
       </form>
     </div>
   );

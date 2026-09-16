@@ -8,12 +8,15 @@ services:
     env_file: .env
     volumes:
       # La SQLite vive en el host y no forma parte de la imagen.
-      # En la Raspberry se fija a /home/0xEsp/gotty-product-os/data.
+      # En la Raspberry se fija a /home/0xEsp/justgame-product-os/data.
       - ${PRODUCT_OS_DATA_DIR:-./data}:/app/data
       # Estos mounts son deliberados: el host es la fuente de verdad de
       # documentación y reglas mientras la aplicación está funcionando.
       - ./workspace:/app/workspace
       - ./os:/app/os
-      # Se conserva para los botones de Git de workspace/ y os/.
-      - ./.git:/app/.git
+      # Git trabaja sobre el checkout completo del host. Montar solo .git
+      # dejaría HEAD e índice fuera de sincronía con los ficheros del host.
+      - ./:/repo
+    environment:
+      PRODUCT_OS_REPO_DIR: /repo
     restart: unless-stopped

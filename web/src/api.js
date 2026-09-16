@@ -27,6 +27,7 @@ export const api = {
   saveDoc: (path, content) => req('/api/docs/content', json('PUT', { path, content })),
   agentRuns: (cardId) => req(`/api/cards/${cardId}/agent-runs`),
   startAgent: (cardId, model) => req(`/api/agent/${cardId}/start`, json('POST', { model })),
+  stopAgent: (cardId) => req(`/api/agent/${cardId}/stop`, { method: 'POST' }),
   sendMessage: (cardId, content) => req(`/api/agent/${cardId}/message`, json('POST', { content })),
   session: (cardId) => req(`/api/agent/${cardId}`),
   gitStatus: () => req('/api/git/status'),

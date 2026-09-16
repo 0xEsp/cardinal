@@ -70,6 +70,11 @@ db.exec(`
     ON agent_runs(card_id, started_at DESC);
 `);
 
+// Una ejecución interrumpida por reinicio del contenedor ya no tiene proceso
+// asociado; no debe seguir apareciendo como activa indefinidamente.
+db.prepare("UPDATE agent_runs SET status = 'interrupted', finished_at = ?, error = 'Servidor reiniciado' WHERE status = 'running'")
+  .run(new Date().toISOString());
+
 // Migraciones incrementales para bases creadas por versiones anteriores.
 const cardColumns = new Set(db.prepare('PRAGMA table_info(cards)').all().map((column) => column.name));
 const addedPosition = !cardColumns.has('position');
@@ -97,8 +102,10 @@ export function getSessionData(cardId) {
 
 export function saveSessionData(cardId, data) {
   db.prepare(
-    'INSERT INTO agent_sessions (card_id, data) VALUES (?, ?) ON CONFLICT(card_id) DO UPDATE SET data = excluded.data'
-  ).run(cardId, JSON.stringify(data));
+    `INSERT INTO agent_sessions (card_id, data)
+     SELECT id, ? FROM cards WHERE id = ?
+     ON CONFLICT(card_id) DO UPDATE SET data = excluded.data`
+  ).run(JSON.stringify(data), cardId);
 }
 
 export function createAgentRun({ cardId, mode, model, contextRevision }) {

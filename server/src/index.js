@@ -20,6 +20,12 @@ if (fs.existsSync(envFile)) {
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 
+const defaultModel = process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5';
+const additionalModels = ['deepseek/deepseek-v4.1-flash', 'openai/gpt-5.6-luna'];
+const configuredModels = (process.env.MODELS || defaultModel)
+  .split(',').map((model) => model.trim()).filter(Boolean);
+const availableModels = [...new Set([defaultModel, ...configuredModels, ...additionalModels])];
+
 const wrap = (fn) => async (req, res) => {
   try {
     const out = await fn(req, res);
@@ -31,8 +37,8 @@ const wrap = (fn) => async (req, res) => {
 
 // ---- config ----
 app.get('/api/config', wrap(() => ({
-  models: (process.env.MODELS || process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5').split(',').map((m) => m.trim()),
-  defaultModel: process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5',
+  models: availableModels,
+  defaultModel,
   hasApiKey: Boolean(process.env.OPENROUTER_API_KEY),
   autoPush: process.env.AUTO_PUSH === 'true',
   columns: cards.COLUMNS,
@@ -52,6 +58,7 @@ app.delete('/api/cards/:id/comments/:commentId', wrap((req) => {
   return { ok: true };
 }));
 app.delete('/api/cards/:id', wrap((req) => {
+  agent.stopAgent(req.params.id);
   cards.deleteCard(req.params.id);
   return { ok: true };
 }));
@@ -77,6 +84,7 @@ const onFinish = async () => {
 };
 
 app.post('/api/agent/:cardId/start', wrap((req) => agent.startAgent(req.params.cardId, { model: req.body?.model, onFinish })));
+app.post('/api/agent/:cardId/stop', wrap((req) => agent.stopAgent(req.params.cardId)));
 app.post('/api/agent/:cardId/message', wrap((req) => {
   agent.sendMessage(req.params.cardId, req.body.content, { onFinish });
   return { ok: true };

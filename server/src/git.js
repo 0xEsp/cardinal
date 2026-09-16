@@ -1,7 +1,9 @@
 import { simpleGit } from 'simple-git';
 import { ROOT } from './paths.js';
 
-const git = simpleGit(ROOT);
+// En Docker el checkout completo del host se monta en /repo. El código que se
+// ejecuta sigue siendo el de la imagen, pero Git opera sobre el árbol real.
+const git = simpleGit(process.env.PRODUCT_OS_REPO_DIR || ROOT);
 
 // En la Raspberry/Docker no hay credential helper interactivo, así que si hay
 // GIT_TOKEN en el entorno construimos la URL autenticada y la usamos por comando,
@@ -43,11 +45,17 @@ export async function pull() {
 export async function commitAndPush(message) {
   await git.add(['workspace', 'os']);
   const s = await git.status();
-  const staged = s.staged.length;
-  if (staged > 0) {
-    await git.commit(message || `product-os: actualización del workspace (${new Date().toISOString()})`);
+  const stagedFiles = (await git.raw(['diff', '--cached', '--name-only', '--', 'workspace', 'os']))
+    .split('\n').filter(Boolean);
+  if (stagedFiles.length > 0) {
+    // El pathspec impide que el botón Push incluya código ya staged por el
+    // usuario en el checkout del host.
+    await git.raw([
+      'commit', '-m', message || `product-os: actualización del workspace (${new Date().toISOString()})`,
+      '--', 'workspace', 'os',
+    ]);
   }
   const remote = await remoteFor('push');
   if (remote) await git.push(remote, s.current);
-  return { committed: staged > 0, pushed: Boolean(remote), files: s.staged };
+  return { committed: stagedFiles.length > 0, pushed: Boolean(remote), files: stagedFiles };
 }

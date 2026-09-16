@@ -49,6 +49,9 @@ function RunItem({ run }) {
   const statusLabel = {
     running: 'En curso',
     completed: 'Completada',
+    waiting_input: 'Esperando instrucciones',
+    stopped: 'Detenida',
+    interrupted: 'Interrumpida por reinicio',
     failed: 'Fallida',
   }[run.status] || run.status;
   const reviewLabel = review.ok ? 'aprobada' : review.issues?.length ? 'con incidencias' : 'no realizada';
