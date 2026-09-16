@@ -22,6 +22,12 @@ fi
 
 cd "$ROOT_DIR"
 
+COMPOSE_IMAGE="$(docker compose config --images)"
+if [[ -z "$COMPOSE_IMAGE" || "$COMPOSE_IMAGE" == *$'\n'* ]]; then
+  echo "Error: no se pudo resolver una única imagen para el servicio." >&2
+  exit 1
+fi
+
 # Compose resuelve la ruta real del volumen, incluida PRODUCT_OS_DATA_DIR de
 # .env. Verificarla evita recrear el contenedor contra una SQLite vacía.
 DATA_DIR="$(docker compose config --format json | python3 -c '
@@ -55,7 +61,17 @@ tar -czf "$BACKUP" -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
 echo "Copia de datos: $BACKUP"
 
 echo "Cargando imagen desde $ARCHIVE..."
-docker load --input "$ARCHIVE"
+LOAD_OUTPUT="$(docker load --input "$ARCHIVE")"
+printf '%s\n' "$LOAD_OUTPUT"
+LOADED_IMAGE="$(printf '%s\n' "$LOAD_OUTPUT" | sed -n 's/^Loaded image: //p' | tail -n 1)"
+if [[ -z "$LOADED_IMAGE" ]]; then
+  echo "Error: el archivo no contiene una imagen con etiqueta." >&2
+  exit 1
+fi
+if [[ "$LOADED_IMAGE" != "$COMPOSE_IMAGE" ]]; then
+  echo "Aplicando la imagen cargada a la etiqueta de Compose: $COMPOSE_IMAGE"
+  docker tag "$LOADED_IMAGE" "$COMPOSE_IMAGE"
+fi
 
 echo "Arrancando Product OS con el contenedor recreado y sin reconstruir la imagen..."
 docker compose up -d --no-build --force-recreate
