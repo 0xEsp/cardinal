@@ -10,6 +10,7 @@ os/               ← las "reglas": cómo se define una card, criterios de QA, g
 workspace/docs/   ← documentación de producto en .md (la fuente de verdad, versionada en git)
 data/             ← SQLite (cards + sesiones + historial de agentes; fuera de git, volumen en Docker)
 server/           ← API Node/Express + agentes (OpenRouter, Codex o Claude Code) con streaming SSE + tool-use
+scripts/paper-bridge/ ← puente MCP de Paper que corre en el Mac (necesario para diseñar desde la Raspberry)
 web/              ← dashboard React (kanban, modal de card, consola de agente, editor de docs)
 ```
 
@@ -58,6 +59,35 @@ data/cli/       ← CLIs instalados (no se incluye en la copia de seguridad del 
 ```
 
 > ⚠ **Condiciones de uso.** OpenAI permite usar la suscripción de ChatGPT con el CLI oficial de Codex. Anthropic solo permite usar la suscripción Pro/Max a través de Claude Code y para uso personal; aquí siempre se invoca el binario oficial, pero revisa sus condiciones vigentes antes de depender de ello. Los límites de uso de la suscripción (ventanas de 5 h y cupo semanal) se aplican también a las revisiones.
+
+## Diseño con Paper
+
+Además de definir, cada card puede tener su **diseño en Paper** (fichero *Gotty · Product Design*), coexistiendo con la definición:
+
+1. **Definir** (pestaña Agente): si Paper está disponible y el proveedor es Codex o Claude, el agente de definición **consulta** los diseños existentes (solo lectura) para que la definición encaje con la UI real.
+2. **Diseñar** (pestaña **Diseño**): un agente de diseño pinta en Paper cada casuística de la definición en una página propia de la card (`30 · Card · <título>`), siguiendo `os/agent-design.md` y `os/design-guide.md`: app en iOS (y Android donde el patrón nativo difiere) y web en parejas desktop + responsive. Una **revisión de diseño obligatoria** (capturas de los artboards contra la definición y el sistema de diseño) debe aprobar el resultado antes de guardarlo. Se guarda un **manifiesto**: qué artboards cubren qué casuística.
+3. **Iterar**: por chat con el agente, o comentando directamente en Paper y pulsando **💬 Aplicar comentarios de Paper** (el agente lee los hilos abiertos, corrige y los marca como resueltos).
+4. **Coherencia**: si la definición cambia después de diseñar, el diseño queda marcado **⚠ desactualizado** (en la card y en el prompt) hasta que se rediseñe. Si el agente de diseño descubre un hueco, actualiza la definición pasando por `review_definition`.
+5. **Copiar como prompt** añade la sección *Diseño (Paper)* con el enlace a la página, los ids de los artboards y cómo usarlos por MCP (`{{designs}}` en `os/feature-prompt.md`).
+6. **Promocionar** (al documentar, en Done Dev): el agente mueve los artboards aprobados a la página de su feature (`10–14` app, `20–25` web) y **borra** los artboards que sustituyen: Paper refleja solo el producto actual. Como Paper no permite borrar páginas por MCP, la página de la card queda vacía y renombrada (`· promocionada, borrar`) para que la borres a mano. El agente de documentación enlaza la página de Paper en el documento del flujo.
+
+El diseño solo se puede hacer con **Codex o Claude** (OpenRouter no puede usar Paper).
+
+### ⚠ El puente de Paper debe estar encendido
+
+El MCP de Paper **no es un servicio en la nube**: es un relay (`~/.paper/bin/paper mcp`) que habla con la app de escritorio de Paper en el Mac. El Product OS de la Raspberry llega a él a través de un **puente** que corre en ese Mac (`scripts/paper-bridge/`). **Sin el Mac encendido, el puente activo y la app de Paper abierta, no se puede diseñar** (la definición sigue funcionando, sin consultar diseños).
+
+El puente es un proceso de Node sin dependencias que **levantas cuando quieras diseñar y cierras con Ctrl+C** (no queda ningún servicio instalado ni escuchando cuando está cerrado). Desde la raíz del repositorio, en el Mac:
+
+```bash
+node scripts/paper-bridge/paper-bridge.mjs
+```
+
+Al levantarlo muestra la **URL** (`http://<ip-del-mac>:4410/mcp`), el **token** y si la app de Paper está abierta. La primera vez, pega URL y token en el Product OS → pestaña **IA** → **Paper (diseño)** y elige el fichero de diseño. El token se guarda en `~/.config/gotty-paper-bridge/token` y se reutiliza en cada arranque, así que no hay que volver a configurarlo. Reserva la IP del Mac en el router para que no cambie. Si macOS pregunta si `node` puede aceptar conexiones entrantes, permítelo.
+
+Otros comandos (desde otra terminal): `node scripts/paper-bridge/paper-bridge.mjs status` (¿está levantado? ¿Paper abierto?), `… token` (URL y token) y `… rotate-token` (token nuevo; hay que actualizarlo en la pestaña IA). Puerto alternativo: `PAPER_BRIDGE_PORT=4420 node scripts/paper-bridge/paper-bridge.mjs`. La pestaña IA muestra en todo momento si el puente responde y si Paper está abierto.
+
+Seguridad: el puente exige el token en cada petición (`Authorization: Bearer`) y solo expone las herramientas de Paper; el Product OS además limita qué herramientas recibe cada agente (lectura para definir y revisar; escritura sin crear ficheros, exportar ni tocar tokens para diseñar).
 
 ## Arranque en local
 
@@ -168,6 +198,7 @@ Exporta tus páginas de Notion como markdown y déjalas en `workspace/docs/` (ke
 | `MODELS` | Modelos de reserva si el catálogo de OpenRouter no responde, separados por coma |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token de `claude setup-token` (opcional; alternativa a pegarlo en la pestaña IA) |
 | `CLI_AUTO_UPDATE` | `false` desactiva la actualización diaria automática de los CLIs de Codex y Claude |
+| `PAPER_BRIDGE_URL` / `PAPER_BRIDGE_TOKEN` / `PAPER_FILE_ID` | Puente de Paper (opcional; lo normal es configurarlo en la pestaña IA) |
 | `PORT` | Puerto del servidor (4400) |
 | `PRODUCT_OS_IMAGE` | Etiqueta de la imagen Docker que ejecutará Compose |
 | `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/justgame-product-os/data` |

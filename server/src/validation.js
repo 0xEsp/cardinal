@@ -63,6 +63,40 @@ export function validateDocument(content) {
   return result(errors, warnings);
 }
 
+// app/web se aceptan por compatibilidad con manifiestos anteriores.
+export const DESIGN_PLATFORMS = ['ios', 'android', 'web-desktop', 'web-responsive', 'app', 'web'];
+
+/**
+ * Valida el manifiesto de diseño: qué artboards de Paper cubren qué
+ * casuísticas de la definición. La revisión con capturas viene después.
+ */
+export function validateDesign(manifest, definition = '') {
+  const errors = [];
+  const warnings = [];
+  if (!manifest || typeof manifest !== 'object') return result(['El manifiesto de diseño está vacío.']);
+  if (!String(manifest.fileId || '').trim()) errors.push('Falta fileId (fichero de Paper).');
+  if (!String(manifest.pageId || '').trim()) errors.push('Falta pageId (página de la card en Paper).');
+  const artboards = Array.isArray(manifest.artboards) ? manifest.artboards : [];
+  if (!artboards.length) errors.push('El manifiesto no incluye ningún artboard.');
+  artboards.forEach((artboard, index) => {
+    const label = artboard?.name || `#${index + 1}`;
+    if (!String(artboard?.id || '').trim()) errors.push(`El artboard ${label} no tiene id.`);
+    if (!String(artboard?.name || '').trim()) errors.push(`El artboard ${label} no tiene nombre.`);
+    if (!Array.isArray(artboard?.covers) || !artboard.covers.some((item) => String(item).trim())) {
+      errors.push(`El artboard ${label} no indica qué casuísticas cubre (covers).`);
+    }
+    if (!artboard?.platform) {
+      warnings.push(`El artboard ${label} no indica plataforma (ios, android, web-desktop o web-responsive).`);
+    } else if (!DESIGN_PLATFORMS.includes(artboard.platform)) {
+      errors.push(`Plataforma desconocida en ${label}: ${artboard.platform} (usa ios, android, web-desktop o web-responsive).`);
+    }
+  });
+  const ids = artboards.map((artboard) => String(artboard?.id || ''));
+  if (new Set(ids).size !== ids.length) errors.push('Hay artboards repetidos en el manifiesto.');
+  if (!String(definition).trim()) errors.push('La card no tiene definición: el diseño debe partir de ella.');
+  return result(errors, warnings);
+}
+
 export function formatValidation(validation) {
   const lines = [];
   if (validation.ok) lines.push('Validación estructural correcta.');

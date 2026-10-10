@@ -10,6 +10,14 @@ const KEY_ENV = 'OPENROUTER_API_KEY';
 
 let modelCache = { at: 0, models: null };
 
+// Niveles que acepta `reasoning.effort` en OpenRouter. Solo se ofrecen en los
+// modelos que declaran el parámetro `reasoning`.
+const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'].map((id) => ({ id, label: id }));
+
+export function reasoningParam(effort) {
+  return effort ? { reasoning: { effort } } : {};
+}
+
 export const openrouter = {
   id: 'openrouter',
   label: 'OpenRouter (API key)',
@@ -63,20 +71,27 @@ export const openrouter = {
         catalog = data
           .filter((model) => (model.supported_parameters || []).includes('tools'))
           .sort((a, b) => (b.created || 0) - (a.created || 0))
-          .map((model) => ({ id: model.id, label: model.name || model.id }));
+          .map((model) => ({
+            id: model.id,
+            label: model.name || model.id,
+            efforts: (model.supported_parameters || []).includes('reasoning') ? REASONING_EFFORTS : [],
+            defaultEffort: null,
+          }));
         modelCache = { at: Date.now(), models: catalog };
       } catch {
         catalog ||= [];
       }
     }
-    const labels = new Map(catalog.map((model) => [model.id, model.label]));
+    const byId = new Map(catalog.map((model) => [model.id, model]));
     return [
-      ...featuredIds.map((id) => ({ id, label: labels.get(id) || id, featured: true })),
+      // Un modelo propio que no está en el catálogo no se sabe si razona: se
+      // ofrecen los niveles igualmente y OpenRouter ignora el parámetro si no aplica.
+      ...featuredIds.map((id) => ({ label: id, efforts: REASONING_EFFORTS, defaultEffort: null, ...byId.get(id), id, featured: true })),
       ...catalog.filter((model) => !featuredIds.includes(model.id)),
     ];
   },
 
-  async complete({ system, user, model, signal }) {
+  async complete({ system, user, model, effort, signal }) {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       signal,
@@ -94,6 +109,7 @@ export const openrouter = {
         ],
         temperature: 0,
         stream: false,
+        ...reasoningParam(effort),
       }),
     });
     if (!response.ok) {

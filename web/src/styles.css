@@ -197,6 +197,7 @@ button.chip { cursor: pointer; }
   background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px 10px; min-width: 0;
 }
+.model-picker .effort-select { font-size: 12px; }
 .model-picker select[aria-label="Modelo"], .model-picker input { width: 260px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 
 /* ---- proveedores de IA ---- */
@@ -375,6 +376,22 @@ button.chip { cursor: pointer; }
 .card-move { display: none; }
 .doc-back { display: none; }
 .filter-toggle { display: none; }
+
+/* ---- diseño (Paper) ---- */
+.chip.design { border-color: #f07ad8; color: #f07ad8; }
+.chip.design.stale { border-color: #ffb84d; color: #ffb84d; }
+.documentation-state.stale { color: #ffb84d; }
+.design-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.design-summary { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-height: 40%; overflow-y: auto; }
+.design-link { color: var(--accent-2); font-size: 13px; }
+.design-artboards { width: 100%; border-collapse: collapse; font-size: 12px; }
+.design-artboards th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
+.design-artboards td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+.design-artboards td a { color: var(--text); }
+.design-promote { border-top: 1px solid var(--border); padding-top: 10px; }
+.design-promote summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.design-promote[open] .design-panel { min-height: 320px; }
+.provider-warning pre { margin: 6px 0; font: 12px ui-monospace, Menlo, monospace; color: var(--text); white-space: pre-wrap; }
 
 /* ---- responsive (móvil) ---- */
 @media (max-width: 720px) {

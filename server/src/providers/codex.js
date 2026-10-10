@@ -10,7 +10,29 @@ import { cliBinary, cliVersion, installState, parseJsonLine, runProcess } from '
 
 fs.mkdirSync(CODEX_HOME, { recursive: true, mode: 0o700 });
 const env = () => ({ CODEX_HOME });
-const toml = (value) => JSON.stringify(value); // un string JSON es un string TOML válido
+const toml = (value) => JSON.stringify(value); // un string/array JSON es TOML válido
+
+// Servidores MCP externos (p. ej. Paper). El token viaja por variable de
+// entorno (bearer_token_env_var) para no aparecer en la línea de comandos.
+function extraMcpArgs(extraMcp = []) {
+  const args = [];
+  const envVars = {};
+  for (const server of extraMcp) {
+    const key = `mcp_servers.${server.name}`;
+    const tokenVar = `PRODUCTOS_MCP_TOKEN_${server.name.toUpperCase()}`;
+    envVars[tokenVar] = server.token;
+    args.push(
+      '-c', `${key}.url=${toml(server.url)}`,
+      '-c', `${key}.bearer_token_env_var=${toml(tokenVar)}`,
+      '-c', `${key}.enabled_tools=${toml(server.tools)}`,
+      '-c', `${key}.required=true`,
+      '-c', `${key}.startup_timeout_sec=30`,
+      '-c', `${key}.tool_timeout_sec=600`,
+      '-c', `${key}.default_tools_approval_mode=${toml('auto')}`,
+    );
+  }
+  return { args, envVars };
+}
 
 let modelCache = { at: 0, models: null };
 let deviceLogin = null; // { child, url, code, output, status, error }
@@ -59,7 +81,17 @@ export const codex = {
     const models = (catalog.models || catalog)
       .filter((model) => model.visibility !== 'hide')
       .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
-      .map((model) => ({ id: model.slug, label: model.display_name || model.slug, description: model.description || '' }));
+      .map((model) => ({
+        id: model.slug,
+        label: model.display_name || model.slug,
+        description: model.description || '',
+        // "ultra" delega en subagentes con su propio shell: se excluye para que
+        // el agente solo trabaje con las herramientas MCP del harness.
+        efforts: (model.supported_reasoning_levels || [])
+          .filter((level) => level.effort && level.effort !== 'ultra')
+          .map((level) => ({ id: level.effort, label: level.effort, description: level.description || '' })),
+        defaultEffort: model.default_reasoning_level || null,
+      }));
     modelCache = { at: Date.now(), models };
     return models;
   },
@@ -118,7 +150,7 @@ export const codex = {
     modelCache = { at: 0, models: null };
   },
 
-  baseArgs({ model, systemPrompt }) {
+  baseArgs({ model, effort, systemPrompt }) {
     const args = [
       '--json',
       '--skip-git-repo-check',
@@ -129,6 +161,7 @@ export const codex = {
       '-c', `web_search=${toml('disabled')}`,
     ];
     if (model) args.push('-m', model);
+    if (effort) args.push('-c', `model_reasoning_effort=${toml(effort)}`);
     if (systemPrompt) args.push('-c', `developer_instructions=${toml(systemPrompt)}`);
     return args;
   },
@@ -137,27 +170,29 @@ export const codex = {
    * Ejecuta un turno del agente. Las herramientas del harness llegan por MCP;
    * aquí solo se traduce el JSONL de Codex a eventos comunes.
    */
-  async runTurn({ prompt, systemPrompt, model, sessionId, mcpUrl, cwd, signal, onEvent }) {
+  async runTurn({ prompt, systemPrompt, model, effort, sessionId, mcpUrl, extraMcp, cwd, signal, onEvent }) {
     const bin = cliBinary('codex');
     if (!bin) throw new Error('El CLI de Codex no está instalado');
     const mcp = `mcp_servers.${MCP_SERVER_NAME}`;
+    const extra = extraMcpArgs(extraMcp);
     const args = [
       'exec',
       ...(sessionId ? ['resume'] : []),
-      ...this.baseArgs({ model, systemPrompt }),
+      ...this.baseArgs({ model, effort, systemPrompt }),
       '-c', `${mcp}.url=${toml(mcpUrl)}`,
       '-c', `${mcp}.required=true`,
       '-c', `${mcp}.startup_timeout_sec=30`,
       // review_* llama a otro modelo: necesita margen.
       '-c', `${mcp}.tool_timeout_sec=900`,
       '-c', `${mcp}.default_tools_approval_mode=${toml('auto')}`,
+      ...extra.args,
       ...(sessionId ? [sessionId] : []),
       '-',
     ];
     let threadId = sessionId || null;
     let failure = null;
     const out = await runProcess(bin, args, {
-      env: env(),
+      env: { ...env(), ...extra.envVars },
       cwd,
       stdin: prompt,
       signal,
@@ -165,7 +200,10 @@ export const codex = {
         const event = parseJsonLine(line);
         if (!event) return;
         if (event.type === 'thread.started') threadId = event.thread_id;
-        else if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
+        else if (event.type === 'item.started' && event.item?.type === 'mcp_tool_call' && event.item.server !== MCP_SERVER_NAME) {
+          // Llamadas a MCP externos (Paper): no pasan por nuestro servidor, se avisan para la consola.
+          onEvent({ type: 'external_tool', server: event.item.server, tool: event.item.tool });
+        } else if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
           onEvent({ type: 'text', text: event.item.text });
         } else if (event.type === 'turn.failed') failure = event.error?.message || 'Codex no pudo completar el turno';
         else if (event.type === 'turn.completed' && event.usage) onEvent({ type: 'usage', usage: event.usage });
@@ -176,12 +214,14 @@ export const codex = {
     return { sessionId: threadId };
   },
 
-  async complete({ system, user, model, signal }) {
+  // extraMcp permite que el revisor consulte Paper (capturas) antes de responder.
+  async complete({ system, user, model, effort, extraMcp, signal }) {
     const bin = cliBinary('codex');
     if (!bin) throw new Error('El CLI de Codex no está instalado');
     let text = '';
-    const out = await runProcess(bin, ['exec', '--ephemeral', ...this.baseArgs({ model, systemPrompt: system }), '-'], {
-      env: env(),
+    const extra = extraMcpArgs(extraMcp);
+    const out = await runProcess(bin, ['exec', '--ephemeral', ...this.baseArgs({ model, effort, systemPrompt: system }), ...extra.args, '-'], {
+      env: { ...env(), ...extra.envVars },
       cwd: CODEX_HOME,
       stdin: user,
       signal,

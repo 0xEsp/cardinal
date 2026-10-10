@@ -18,17 +18,27 @@ export function defaults() {
   return {
     provider,
     model: saved.model || PROVIDERS[provider].defaultModel,
-    reviewer: saved.reviewer || null, // { provider, model } o null = el mismo que el agente
+    effort: saved.effort || '', // '' = el que use el proveedor por defecto
+    reviewer: saved.reviewer || null, // { provider, model, effort } o null = el mismo que el agente
   };
 }
 
-export function saveDefaults({ provider, model, reviewer }) {
+export const cleanEffort = (effort) => String(effort || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+
+export function saveDefaults({ provider, model, effort, reviewer }) {
   getProvider(provider);
   if (reviewer?.provider) getProvider(reviewer.provider);
   setSetting('agentDefaults', {
     provider,
     model: String(model || '').trim() || PROVIDERS[provider].defaultModel,
-    reviewer: reviewer?.provider ? { provider: reviewer.provider, model: String(reviewer.model || '').trim() || PROVIDERS[reviewer.provider].defaultModel } : null,
+    effort: cleanEffort(effort),
+    reviewer: reviewer?.provider
+      ? {
+        provider: reviewer.provider,
+        model: String(reviewer.model || '').trim() || PROVIDERS[reviewer.provider].defaultModel,
+        effort: cleanEffort(reviewer.effort),
+      }
+      : null,
   });
   return defaults();
 }

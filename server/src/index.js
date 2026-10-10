@@ -10,6 +10,7 @@ import * as git from './git.js';
 import { mcpRouter } from './mcp.js';
 import { PROVIDERS, defaults, getProvider, providerStatuses, saveDefaults, scheduleCliUpdates } from './providers/index.js';
 import { installCli } from './providers/cli.js';
+import { deletePaperToken, listPaperFiles, paperStatus, savePaperConfig } from './paper.js';
 
 // Carga .env sin dependencia extra
 const envFile = path.join(ROOT, '.env');
@@ -37,6 +38,7 @@ const wrap = (fn) => async (req, res) => {
 // ---- config ----
 app.get('/api/config', wrap(async () => ({
   providers: (await providerStatuses()).map(({ id, label, kind, ready, message, defaultModel }) => ({ id, label, kind, ready, message, defaultModel })),
+  paper: await paperStatus(),
   defaults: defaults(),
   autoPush: process.env.AUTO_PUSH === 'true',
   columns: cards.COLUMNS,
@@ -59,7 +61,7 @@ app.post('/api/providers/:id/install', wrap((req) => {
 app.post('/api/providers/:id/verify', wrap(async (req) => {
   const provider = getProvider(req.params.id);
   const model = String(req.body?.model || '').trim() || provider.defaultModel;
-  const answer = await provider.complete({ model, system: 'Responde únicamente con la palabra OK.', user: 'ping', signal: AbortSignal.timeout(120000) });
+  const answer = await provider.complete({ model, effort: '', system: 'Responde únicamente con la palabra OK.', user: 'ping', signal: AbortSignal.timeout(120000) });
   return { ok: true, model, answer: String(answer || '').trim().slice(0, 200) };
 }));
 app.delete('/api/providers/:id/credentials', wrap(async (req) => {
@@ -78,6 +80,19 @@ app.put('/api/providers/codex/credentials', wrap((req) => {
   PROVIDERS.codex.saveAuthJson(req.body?.authJson);
   return { ok: true };
 }));
+// ---- Paper (diseño) ----
+// El puente corre en el Mac (scripts/paper-bridge/). El token nunca se devuelve.
+app.get('/api/paper', wrap(() => paperStatus()));
+app.put('/api/paper', wrap(async (req) => {
+  savePaperConfig(req.body || {});
+  return paperStatus();
+}));
+app.delete('/api/paper/token', wrap(() => {
+  deletePaperToken();
+  return { ok: true };
+}));
+app.get('/api/paper/files', wrap(async () => ({ files: await listPaperFiles() })));
+
 app.post('/api/providers/codex/device-login', wrap(() => {
   const { url, code, status, error } = PROVIDERS.codex.startDeviceLogin();
   return { url, code, status, error };
@@ -101,7 +116,7 @@ app.delete('/api/cards/:id/comments/:commentId', wrap((req) => {
   return { ok: true };
 }));
 app.delete('/api/cards/:id', wrap((req) => {
-  agent.stopAgent(req.params.id);
+  agent.stopAllAgents(req.params.id);
   cards.deleteCard(req.params.id);
   return { ok: true };
 }));
@@ -126,17 +141,24 @@ const onFinish = async () => {
   }
 };
 
+// slot: "main" (definición/documentación) o "design" (Paper). task solo en design:
+// design | comments | promote.
+const slotOf = (req) => String(req.query.slot || req.body?.slot || 'main');
+
 app.post('/api/agent/:cardId/start', wrap((req) => agent.startAgent(req.params.cardId, {
+  slot: slotOf(req),
+  task: req.body?.task,
   provider: req.body?.provider,
   model: req.body?.model,
+  effort: req.body?.effort,
   onFinish,
 })));
-app.post('/api/agent/:cardId/stop', wrap((req) => agent.stopAgent(req.params.cardId)));
+app.post('/api/agent/:cardId/stop', wrap((req) => agent.stopAgent(req.params.cardId, slotOf(req))));
 app.post('/api/agent/:cardId/message', wrap((req) => {
-  agent.sendMessage(req.params.cardId, req.body.content, { onFinish });
+  agent.sendMessage(req.params.cardId, req.body.content, { slot: slotOf(req), onFinish });
   return { ok: true };
 }));
-app.get('/api/agent/:cardId', wrap((req) => agent.sessionInfo(req.params.cardId)));
+app.get('/api/agent/:cardId', wrap((req) => agent.sessionInfo(req.params.cardId, slotOf(req))));
 app.get('/api/cards/:id/agent-runs', wrap((req) => {
   cards.getCard(req.params.id);
   return agent.listRuns(req.params.id);
@@ -147,7 +169,12 @@ app.get('/api/agent/:cardId/stream', (req, res) => {
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   });
-  agent.subscribe(req.params.cardId, res);
+  try {
+    agent.subscribe(req.params.cardId, res, slotOf(req));
+  } catch (error) {
+    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    res.end();
+  }
 });
 
 // ---- git ----

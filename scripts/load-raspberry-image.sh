@@ -56,14 +56,18 @@ restore_on_failure() {
 }
 trap restore_on_failure ERR
 mkdir -p "$ROOT_DIR/releases"
-BACKUP="$ROOT_DIR/releases/product-os-data-$(date +%Y%m%d-%H%M%S)-$$.tar.gz"
-# Los CLIs de IA (cli/, cientos de MB) se reinstalan desde la pestaña IA y
-# agent-work/ es temporal: no forman parte de la copia. Credenciales y
-# sesiones (secrets/, codex/, claude/) sí se conservan.
-tar -czf "$BACKUP" \
-  --exclude="$(basename "$DATA_DIR")/cli" \
-  --exclude="$(basename "$DATA_DIR")/agent-work" \
-  -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
+BACKUP_NAME="product-os-data-$(date +%Y%m%d-%H%M%S)-$$.tar.gz"
+BACKUP="$ROOT_DIR/releases/$BACKUP_NAME"
+# El contenedor corre como root y crea secrets/, codex/ y claude/ con 0700, que
+# el usuario del host no puede leer: la copia se hace desde un contenedor con
+# la imagen actual y el fichero queda 0600 y a nombre de este usuario porque
+# contiene credenciales. Los CLIs de IA (cli/, cientos de MB) se reinstalan
+# desde la pestaña IA y agent-work/ es temporal: no forman parte de la copia.
+docker run --rm --entrypoint sh \
+  -v "$DATA_DIR:/backup-src/data:ro" \
+  -v "$ROOT_DIR/releases:/backup-out" \
+  "$COMPOSE_IMAGE" -c "tar -czf '/backup-out/$BACKUP_NAME' --exclude=data/cli --exclude=data/agent-work -C /backup-src data \
+    && chown $(id -u):$(id -g) '/backup-out/$BACKUP_NAME' && chmod 600 '/backup-out/$BACKUP_NAME'"
 echo "Copia de datos: $BACKUP"
 
 echo "Cargando imagen desde $ARCHIVE..."

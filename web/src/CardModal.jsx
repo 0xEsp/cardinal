@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { copyText } from './clipboard.js';
 import AgentPanel from './AgentPanel.jsx';
 import AgentRuns from './AgentRuns.jsx';
+import DesignPanel from './DesignPanel.jsx';
 
 const STACKS = ['app', 'web', 'backend'];
 
@@ -153,6 +154,12 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
               onChanged={onChanged}
               showToast={showToast}
             />
+            {card.design && (
+              <details className="design-promote" open={card.designStatus === 'ready'}>
+                <summary>Diseño en Paper · {card.designStatus === 'promoted' ? 'promocionado' : card.designStatus === 'stale' ? 'desactualizado' : 'pendiente de promocionar'}</summary>
+                <DesignPanel card={card} config={config} onChanged={onChanged} showToast={showToast} promote />
+              </details>
+            )}
             <AgentRuns cardId={card.id} compact />
           </div>
         </div>
@@ -218,6 +225,11 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
             Comentarios{card.commentCount ? ` ${card.commentCount}` : ''}
           </button>
           <button className={tab === 'agent' ? 'tab active' : 'tab'} onClick={() => setTab('agent')}>Agente</button>
+          {agentMode && (
+            <button className={tab === 'design' ? 'tab active' : 'tab'} onClick={() => setTab('design')}>
+              Diseño{card.designStatus === 'stale' ? ' ⚠' : card.design ? ' 🎨' : ''}
+            </button>
+          )}
           <button className={tab === 'runs' ? 'tab active' : 'tab'} onClick={() => setTab('runs')}>Ejecuciones</button>
         </div>
 
@@ -289,6 +301,10 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
 
           {tab === 'agent' && (
             <AgentPanel card={card} config={config} mode={agentMode} onChanged={onChanged} showToast={showToast} />
+          )}
+
+          {tab === 'design' && agentMode && (
+            <DesignPanel card={card} config={config} onChanged={onChanged} showToast={showToast} />
           )}
 
           {tab === 'runs' && <AgentRuns cardId={card.id} />}

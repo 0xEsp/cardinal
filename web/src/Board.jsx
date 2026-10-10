@@ -271,6 +271,14 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
                         </span>
                       ))}
                       {card.definition && <span className="chip defined" title="Tiene definición generada">✦ def</span>}
+                      {card.design && (
+                        <span
+                          className={card.designStatus === 'stale' ? 'chip design stale' : 'chip design'}
+                          title={card.designStatus === 'stale' ? 'Diseño desactualizado respecto a la definición' : 'Tiene diseño en Paper'}
+                        >
+                          🎨{card.designStatus === 'stale' ? ' ⚠' : ''}
+                        </span>
+                      )}
                       {card.commentCount > 0 && (
                         <span className="chip comments" title={`${card.commentCount} comentarios`}>
                           ◉ {card.commentCount}

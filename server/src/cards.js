@@ -1,4 +1,28 @@
+import crypto from 'node:crypto';
 import { db } from './db.js';
+
+// Huella de la definición con la que se aprobó un diseño: si la definición
+// cambia después, el diseño queda "desactualizado".
+export function definitionHash(definition) {
+  return crypto.createHash('sha256').update(String(definition || '')).digest('hex').slice(0, 16);
+}
+
+export function paperPageUrl(fileId, pageId) {
+  return `https://app.paper.design/file/${encodeURIComponent(fileId)}/${encodeURIComponent(pageId)}`;
+}
+
+function parseDesign(raw, definition) {
+  if (!raw) return { design: null, designStatus: 'none' };
+  let design;
+  try {
+    design = JSON.parse(raw);
+  } catch {
+    return { design: null, designStatus: 'none' };
+  }
+  const stale = design.definitionHash !== definitionHash(definition);
+  const designStatus = stale ? 'stale' : design.promotedAt ? 'promoted' : 'ready';
+  return { design, designStatus };
+}
 
 export const COLUMNS = ['backlog', 'todo', 'in-progress', 'done-dev', 'done'];
 export const STACKS = ['app', 'web', 'backend'];
@@ -24,6 +48,7 @@ function toCard(row, stackRows) {
     definition: row.definition,
     documentationStatus: row.documentation_status,
     documentedAt: row.documented_at,
+    ...parseDesign(row.design, row.definition),
     commentCount: Number(row.comment_count || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -188,6 +213,36 @@ export function markDocumented(id) {
     SET documentation_status = 'documented', documented_at = ?, updated_at = ?
     WHERE id = ?
   `).run(now, now, id);
+  return getCard(id);
+}
+
+/**
+ * Guarda el manifiesto del diseño: qué artboards de Paper cubren qué
+ * casuísticas, ligado a la versión actual de la definición.
+ */
+export function saveDesign(id, manifest, { promoted = false } = {}) {
+  const card = getCard(id);
+  const now = new Date().toISOString();
+  const design = {
+    fileId: manifest.fileId,
+    fileName: manifest.fileName || '',
+    pageId: manifest.pageId,
+    pageName: manifest.pageName || '',
+    pageUrl: paperPageUrl(manifest.fileId, manifest.pageId),
+    artboards: manifest.artboards.map((artboard) => ({
+      id: String(artboard.id),
+      name: String(artboard.name || ''),
+      platform: artboard.platform || '',
+      covers: (artboard.covers || []).map(String),
+      ...(artboard.pageId ? { pageId: artboard.pageId, pageUrl: paperPageUrl(manifest.fileId, artboard.pageId) } : {}),
+    })),
+    notes: String(manifest.notes || ''),
+    definitionHash: definitionHash(card.definition),
+    savedAt: now,
+    // Rediseñar después de promocionar devuelve el diseño a borrador.
+    promotedAt: promoted ? now : null,
+  };
+  db.prepare('UPDATE cards SET design = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(design), now, id);
   return getCard(id);
 }
 

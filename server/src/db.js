@@ -83,6 +83,8 @@ if (!cardColumns.has('documentation_status')) {
   db.exec("ALTER TABLE cards ADD COLUMN documentation_status TEXT NOT NULL DEFAULT 'pending'");
 }
 if (!cardColumns.has('documented_at')) db.exec('ALTER TABLE cards ADD COLUMN documented_at TEXT');
+// Manifiesto del diseño en Paper (JSON); vacío si la card no tiene diseño.
+if (!cardColumns.has('design')) db.exec("ALTER TABLE cards ADD COLUMN design TEXT NOT NULL DEFAULT ''");
 
 if (addedPosition) {
   const columns = db.prepare('SELECT DISTINCT "column" AS name FROM cards').all();
@@ -95,17 +97,38 @@ if (addedPosition) {
   }
 }
 
-export function getSessionData(cardId) {
-  const row = db.prepare('SELECT data FROM agent_sessions WHERE card_id = ?').get(cardId);
+// Una card puede tener varias sesiones de agente simultáneas ("slots"): la
+// principal (definición/documentación, tabla agent_sessions) y la de diseño.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS card_agent_sessions (
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    slot    TEXT NOT NULL,
+    data    TEXT NOT NULL,
+    PRIMARY KEY (card_id, slot)
+  );
+`);
+
+export function getSessionData(cardId, slot = 'main') {
+  const row = slot === 'main'
+    ? db.prepare('SELECT data FROM agent_sessions WHERE card_id = ?').get(cardId)
+    : db.prepare('SELECT data FROM card_agent_sessions WHERE card_id = ? AND slot = ?').get(cardId, slot);
   return row ? JSON.parse(row.data) : null;
 }
 
-export function saveSessionData(cardId, data) {
+export function saveSessionData(cardId, data, slot = 'main') {
+  if (slot === 'main') {
+    db.prepare(
+      `INSERT INTO agent_sessions (card_id, data)
+       SELECT id, ? FROM cards WHERE id = ?
+       ON CONFLICT(card_id) DO UPDATE SET data = excluded.data`
+    ).run(JSON.stringify(data), cardId);
+    return;
+  }
   db.prepare(
-    `INSERT INTO agent_sessions (card_id, data)
-     SELECT id, ? FROM cards WHERE id = ?
-     ON CONFLICT(card_id) DO UPDATE SET data = excluded.data`
-  ).run(JSON.stringify(data), cardId);
+    `INSERT INTO card_agent_sessions (card_id, slot, data)
+     SELECT id, ?, ? FROM cards WHERE id = ?
+     ON CONFLICT(card_id, slot) DO UPDATE SET data = excluded.data`
+  ).run(slot, JSON.stringify(data), cardId);
 }
 
 export function createAgentRun({ cardId, mode, model, contextRevision }) {

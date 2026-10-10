@@ -42,13 +42,42 @@ const ALIASES = [
   { id: 'fable', label: 'Fable (último)' },
 ];
 
+// Los niveles de --effort se leen del --help del CLI instalado: si Claude Code
+// añade uno nuevo, aparece al actualizar el CLI.
+const FALLBACK_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+let effortCache = { at: 0, levels: null };
+
+async function effortLevels() {
+  if (effortCache.levels && Date.now() - effortCache.at < 60 * 60 * 1000) return effortCache.levels;
+  const bin = cliBinary('claude');
+  if (!bin) return FALLBACK_EFFORTS;
+  const out = await runProcess(bin, ['--help'], { env: env(), timeoutMs: 15000 }).catch(() => null);
+  const match = out?.stdout.replace(/\s+/g, ' ').match(/--effort <level>.*?\(([a-z, ]+)\)/);
+  const levels = match ? match[1].split(',').map((level) => level.trim()).filter(Boolean) : [];
+  effortCache = { at: Date.now(), levels: levels.length ? levels : FALLBACK_EFFORTS };
+  return effortCache.levels;
+}
+
+// Config MCP en un fichero 0600 (lleva el token de Paper) y la lista de
+// herramientas permitidas: las nuestras completas y de Paper solo las indicadas.
+function mcpSetup(file, servers = {}, extraMcp = []) {
+  const mcpServers = { ...servers };
+  const allowed = Object.keys(servers).map((name) => `mcp__${name}`);
+  for (const server of extraMcp) {
+    mcpServers[server.name] = { type: 'http', url: server.url, headers: { Authorization: `Bearer ${server.token}` } };
+    allowed.push(...server.tools.map((tool) => `mcp__${server.name}__${tool}`));
+  }
+  fs.writeFileSync(file, JSON.stringify({ mcpServers }), { mode: 0o600 });
+  return ['--mcp-config', file, ...(allowed.length ? ['--allowedTools', allowed.join(',')] : [])];
+}
+
 function writeTemp(content) {
   const file = path.join(os.tmpdir(), `productos-${crypto.randomBytes(6).toString('hex')}.md`);
   fs.writeFileSync(file, content, { mode: 0o600 });
   return file;
 }
 
-function commonArgs({ model, systemPromptFile }) {
+function commonArgs({ model, effort, systemPromptFile }) {
   const args = [
     '-p',
     '--tools', '',
@@ -57,6 +86,7 @@ function commonArgs({ model, systemPromptFile }) {
     '--system-prompt-file', systemPromptFile,
   ];
   if (model) args.push('--model', model);
+  if (effort) args.push('--effort', effort);
   return args;
 }
 
@@ -87,7 +117,8 @@ export const claude = {
   },
 
   async listModels() {
-    return ALIASES;
+    const efforts = (await effortLevels()).map((id) => ({ id, label: id }));
+    return ALIASES.map((alias) => ({ ...alias, efforts, defaultEffort: null }));
   },
 
   saveToken(token) {
@@ -102,19 +133,18 @@ export const claude = {
     deleteSecret(TOKEN_SECRET);
   },
 
-  async runTurn({ prompt, systemPrompt, model, sessionId, mcpUrl, cwd, signal, onEvent }) {
+  async runTurn({ prompt, systemPrompt, model, effort, sessionId, mcpUrl, extraMcp, cwd, signal, onEvent }) {
     const bin = cliBinary('claude');
     if (!bin) throw new Error('El CLI de Claude Code no está instalado');
     const systemPromptFile = path.join(cwd, 'system-prompt.md');
     fs.writeFileSync(systemPromptFile, systemPrompt, { mode: 0o600 });
     const newSession = sessionId || crypto.randomUUID();
     const args = [
-      ...commonArgs({ model, systemPromptFile }),
+      ...commonArgs({ model, effort, systemPromptFile }),
       '--output-format', 'stream-json',
       '--verbose',
       '--include-partial-messages',
-      '--mcp-config', JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: { type: 'http', url: mcpUrl } } }),
-      '--allowedTools', `mcp__${MCP_SERVER_NAME}`,
+      ...mcpSetup(path.join(cwd, 'mcp.json'), { [MCP_SERVER_NAME]: { type: 'http', url: mcpUrl } }, extraMcp),
       ...(sessionId ? ['--resume', sessionId] : ['--session-id', newSession]),
     ];
     let result = null;
@@ -137,6 +167,12 @@ export const claude = {
           } else if (event.event?.type === 'message_stop') {
             onEvent({ type: 'flush' });
           }
+        } else if (event.type === 'assistant') {
+          // Llamadas a MCP externos (Paper): no pasan por nuestro servidor, se avisan para la consola.
+          for (const block of event.message?.content || []) {
+            const match = block.type === 'tool_use' && block.name?.match(/^mcp__(.+?)__(.+)$/);
+            if (match && match[1] !== MCP_SERVER_NAME) onEvent({ type: 'external_tool', server: match[1], tool: match[2] });
+          }
         } else if (event.type === 'result') {
           result = event;
           if (event.usage) onEvent({ type: 'usage', usage: event.usage });
@@ -149,16 +185,18 @@ export const claude = {
     return { sessionId: result?.session_id || newSession };
   },
 
-  async complete({ system, user, model, signal }) {
+  // extraMcp permite que el revisor consulte Paper (capturas) antes de responder.
+  async complete({ system, user, model, effort, extraMcp, signal }) {
     const bin = cliBinary('claude');
     if (!bin) throw new Error('El CLI de Claude Code no está instalado');
     const systemPromptFile = writeTemp(system);
+    const mcpFile = `${systemPromptFile}.mcp.json`;
     try {
       const out = await runProcess(bin, [
-        ...commonArgs({ model, systemPromptFile }),
+        ...commonArgs({ model, effort, systemPromptFile }),
         '--output-format', 'json',
         '--no-session-persistence',
-        '--mcp-config', '{"mcpServers":{}}',
+        ...mcpSetup(mcpFile, {}, extraMcp),
       ], { env: env(), cwd: CLAUDE_CONFIG_DIR, stdin: user, signal, timeoutMs: 15 * 60 * 1000 });
       const parsed = parseJsonLine(out.stdout.trim());
       if (!parsed || parsed.is_error || out.code !== 0) {
@@ -167,6 +205,7 @@ export const claude = {
       return parsed.result || '';
     } finally {
       fs.rmSync(systemPromptFile, { force: true });
+      fs.rmSync(mcpFile, { force: true });
     }
   },
 };

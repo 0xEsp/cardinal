@@ -12,4 +12,8 @@ Cuando el usuario pida desplegar cambios de este proyecto, trabaja desde `/Users
 3. SSH o SCP solicitarán la contraseña o el desbloqueo de la clave cuando corresponda. Si no pueden solicitarla, pide al usuario que configure el acceso; no guardes credenciales en archivos, argumentos ni mensajes.
 4. Comprueba mediante SSH `docker compose ps` y los logs recientes del servicio. Si el arranque falla, informa del error y conserva el backup de `releases/` para recuperar los datos.
 
-`load-raspberry-image.sh` comprueba el volumen `/app/data`, detiene el contenedor, hace una copia del directorio de datos y recrea el servicio. No borres ni sustituyas el volumen. La documentación y las reglas se sincronizan por Git mediante Push/Pull, sin nueva imagen.
+`load-raspberry-image.sh` comprueba el volumen `/app/data`, detiene el contenedor, hace una copia del directorio de datos (desde un contenedor, porque `secrets/`, `codex/` y `claude/` pertenecen a root; excluye `cli/` y `agent-work/`) y recrea el servicio. No borres ni sustituyas el volumen. La documentación y las reglas se sincronizan por Git mediante Push/Pull, sin nueva imagen.
+
+## Paper (diseño)
+
+El despliegue no incluye nada de Paper: el diseño depende del **puente de Paper que corre en el Mac** (`scripts/paper-bridge/`, skill `paper-bridge`), no de la Raspberry. El puente no es un servicio: el usuario lo levanta a mano cuando quiere diseñar (`node scripts/paper-bridge/paper-bridge.mjs`) y lo cierra con Ctrl+C. Si tras desplegar quiere diseñar, comprueba en el Mac `node scripts/paper-bridge/paper-bridge.mjs status` y que la pestaña IA del Product OS muestre Paper como listo.

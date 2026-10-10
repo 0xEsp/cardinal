@@ -58,6 +58,7 @@ export default function ProvidersView({ onConfigChanged, showToast }) {
           providers={data.providers}
           provider={defaults.provider}
           model={defaults.model}
+          effort={defaults.effort}
           onChange={(next) => setDefaults({ ...defaults, ...next })}
         />
         <label className="provider-check">
@@ -66,7 +67,7 @@ export default function ProvidersView({ onConfigChanged, showToast }) {
             checked={Boolean(defaults.reviewer)}
             onChange={(e) => setDefaults({
               ...defaults,
-              reviewer: e.target.checked ? { provider: defaults.provider, model: defaults.model } : null,
+              reviewer: e.target.checked ? { provider: defaults.provider, model: defaults.model, effort: defaults.effort } : null,
             })}
           />
           Usar otro proveedor/modelo para la revisión independiente
@@ -76,6 +77,7 @@ export default function ProvidersView({ onConfigChanged, showToast }) {
             providers={data.providers}
             provider={defaults.reviewer.provider}
             model={defaults.reviewer.model}
+            effort={defaults.reviewer.effort}
             onChange={(next) => setDefaults({ ...defaults, reviewer: next })}
           />
         )}
@@ -93,7 +95,115 @@ export default function ProvidersView({ onConfigChanged, showToast }) {
       <OpenRouterCard provider={byId.openrouter} {...common} />
       <CodexCard provider={byId.codex} {...common} />
       <ClaudeCard provider={byId.claude} {...common} />
+      <PaperCard onConfigChanged={onConfigChanged} showToast={showToast} />
     </div>
+  );
+}
+
+// Paper (diseño): el MCP de Paper solo existe en el Mac con la app abierta, así
+// que el Product OS se conecta a través del puente scripts/paper-bridge/.
+function PaperCard({ onConfigChanged, showToast }) {
+  const [status, setStatus] = useState(null);
+  const [url, setUrl] = useState('');
+  const [files, setFiles] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const next = await api.paper();
+    setStatus(next);
+    setUrl((current) => current || next.url || '');
+    return next;
+  }, []);
+
+  useEffect(() => {
+    load().catch((e) => showToast(e.message, true));
+  }, [load, showToast]);
+
+  const run = async (fn, success) => {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      onConfigChanged();
+      if (success) showToast(success);
+      return true;
+    } catch (e) {
+      showToast(e.message, true);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadFiles = () => run(async () => setFiles((await api.paperFiles()).files));
+
+  if (!status) return null;
+  const pill = status.ready ? '● Listo' : `○ ${status.message || 'No configurado'}`;
+
+  return (
+    <section className="provider-card">
+      <div className="provider-head">
+        <h2>Paper (diseño)</h2>
+        <span className={status.ready ? 'provider-pill ready' : 'provider-pill'}>{pill}</span>
+      </div>
+      <p className="provider-help">
+        Permite que el agente de definición consulte los diseños y que el agente de diseño pinte en Paper. Paper solo expone su
+        MCP en el Mac donde está abierta la app, así que el Product OS se conecta a través de un <b>puente</b> que corre en ese Mac.
+      </p>
+      <div className="provider-warning">
+        Para diseñar, en el Mac deben estar <b>levantados el puente y la app de Paper</b>. Levanta el puente desde el repositorio
+        (se cierra con Ctrl+C):
+        <pre>node scripts/paper-bridge/paper-bridge.mjs</pre>
+        Al arrancar muestra la URL y el token que hay que pegar aquí (solo la primera vez: el token se reutiliza).
+      </div>
+      <div className="provider-row">
+        <span className="provider-label">Puente</span>
+        <span className="provider-value">
+          {status.bridge ? `conectado${status.host ? ` (${status.host})` : ''}` : 'sin respuesta'} · Paper {status.paperApp ? 'abierto' : 'cerrado'}
+        </span>
+        <button className="btn" disabled={busy} onClick={() => run(async () => {}, null)}>↻ Comprobar</button>
+      </div>
+      <form
+        className="provider-secret"
+        onSubmit={(e) => {
+          e.preventDefault();
+          run(() => api.savePaper({ url }), 'URL del puente guardada');
+        }}
+      >
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://<ip-del-mac>:4410/mcp" spellCheck={false} />
+        <button className="btn primary" type="submit" disabled={busy || !url.trim()}>Guardar URL</button>
+      </form>
+      <div className="provider-row">
+        <span className="provider-label">Token</span>
+        <span className="provider-value">{status.tokenSource === 'ui' ? 'guardado desde aquí' : status.tokenSource === 'env' ? 'desde .env' : 'sin configurar'}</span>
+        {status.tokenSource === 'ui' && (
+          <button className="btn danger" onClick={() => run(() => api.deletePaperToken(), 'Token eliminado')}>Eliminar</button>
+        )}
+      </div>
+      <SecretForm
+        placeholder="Token del puente (paper-bridge.mjs token)"
+        label="Guardar token"
+        onSave={(token) => run(() => api.savePaper({ token }), 'Token guardado')}
+      />
+      <div className="provider-row">
+        <span className="provider-label">Fichero</span>
+        <span className="provider-value">{status.fileId ? `${status.fileName || 'sin nombre'} · ${status.fileId}` : 'sin elegir'}</span>
+        <button className="btn" disabled={busy || !status.bridge || !status.paperApp} onClick={loadFiles}>Elegir fichero</button>
+      </div>
+      {files && (
+        <div className="provider-actions">
+          {files.map((file) => (
+            <button
+              key={file.id}
+              className={file.id === status.fileId ? 'btn primary' : 'btn'}
+              onClick={() => run(() => api.savePaper({ fileId: file.id, fileName: file.name }), `Fichero de diseño: ${file.name}`).then(() => setFiles(null))}
+            >
+              {file.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

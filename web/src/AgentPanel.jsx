@@ -2,13 +2,28 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import ModelPicker from './ModelPicker.jsx';
 
-export default function AgentPanel({ card, config, mode, documentOnly = false, onChanged, showToast }) {
+// slot "design": el agente de diseño solo puede usar proveedores CLI (Paper va por MCP).
+function initialChoice(config, slot) {
+  const { defaults, providers } = config;
+  if (slot !== 'design' || providers.find((p) => p.id === defaults.provider)?.kind === 'cli') {
+    return { provider: defaults.provider, model: defaults.model, effort: defaults.effort || '' };
+  }
+  const cli = providers.find((p) => p.kind === 'cli' && p.ready) || providers.find((p) => p.kind === 'cli');
+  return { provider: cli?.id || '', model: cli?.defaultModel || '', effort: '' };
+}
+
+/**
+ * Consola + chat de un agente. `actions` sustituye el botón de lanzar por
+ * varias tareas (p. ej. diseñar / aplicar comentarios / promocionar).
+ */
+export default function AgentPanel({ card, config, mode, slot = 'main', actions = null, emptyText = null, documentOnly = false, onChanged, showToast }) {
   const [events, setEvents] = useState([]);
   const [running, setRunning] = useState(false);
   const [active, setActive] = useState(false);
   const [hasSession, setHasSession] = useState(false);
-  const [choice, setChoice] = useState({ provider: config.defaults.provider, model: config.defaults.model });
-  const providerReady = config.providers.some((p) => p.id === choice.provider && p.ready);
+  const [choice, setChoice] = useState(() => initialChoice(config, slot));
+  const providers = slot === 'design' ? config.providers.filter((p) => p.kind === 'cli') : config.providers;
+  const providerReady = providers.some((p) => p.id === choice.provider && p.ready);
   const [input, setInput] = useState('');
   const consoleRef = useRef(null);
   const streamText = useRef('');
@@ -16,7 +31,7 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
   useEffect(() => {
     setEvents([]);
     streamText.current = '';
-    const es = new EventSource(`/api/agent/${card.id}/stream`);
+    const es = new EventSource(`/api/agent/${card.id}/stream?slot=${slot}`);
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data);
       if (ev.type === 'history') {
@@ -24,7 +39,7 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
         setHasSession(matchesMode && ev.messages.length > 0);
         setRunning(matchesMode && ev.running);
         setActive(matchesMode && ev.active);
-        if (matchesMode && ev.model) setChoice({ provider: ev.provider || 'openrouter', model: ev.model });
+        if (matchesMode && ev.model) setChoice({ provider: ev.provider || 'openrouter', model: ev.model, effort: ev.effort || '' });
         if (!matchesMode) {
           setEvents([]);
           return;
@@ -79,14 +94,16 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
         ]);
       } else if (ev.type === 'saved') {
         onChanged();
-        setEvents((prev) => [...prev, { kind: 'saved', text: ev.target === 'definition' ? '✦ Definición guardada en la card' : `✦ Documento guardado: ${ev.path}` }]);
+        setEvents((prev) => [...prev, { kind: 'saved', text: SAVED_TEXT[ev.target]?.(ev) || `✦ Documento guardado: ${ev.path}` }]);
       } else if (ev.type === 'user') {
         streamText.current = '';
         setEvents((prev) => [...prev, { kind: 'user', text: ev.text }]);
       } else if (ev.type === 'started') {
         setHasSession(true);
         setActive(true);
-        setEvents([{ kind: 'info', text: `Agente lanzado · modo ${ev.mode} · ${ev.provider} · ${ev.model}` }]);
+        setEvents([{ kind: 'info', text: `Agente lanzado · ${ev.task ? `diseño (${TASK_LABELS[ev.task] || ev.task})` : `modo ${ev.mode}`} · ${ev.provider} · ${ev.model}${ev.effort ? ` · effort ${ev.effort}` : ''}` }]);
+      } else if (ev.type === 'info') {
+        setEvents((prev) => [...prev, { kind: 'info', text: ev.message }]);
       } else if (ev.type === 'status') {
         setRunning(ev.running);
         setActive(ev.active);
@@ -101,15 +118,15 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
       }
     };
     return () => es.close();
-  }, [card.id, documentOnly]);
+  }, [card.id, documentOnly, slot]);
 
   useEffect(() => {
     if (consoleRef.current) consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
   }, [events]);
 
-  const launch = async () => {
+  const launch = async (task) => {
     try {
-      await api.startAgent(card.id, choice.provider, choice.model);
+      await api.startAgent(card.id, { slot, task, ...choice });
     } catch (e) {
       showToast(e.message, true);
     }
@@ -117,7 +134,7 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
 
   const stop = async () => {
     try {
-      await api.stopAgent(card.id);
+      await api.stopAgent(card.id, slot);
     } catch (e) {
       showToast(e.message, true);
     }
@@ -127,7 +144,7 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
     e.preventDefault();
     if (!input.trim()) return;
     try {
-      await api.sendMessage(card.id, input.trim());
+      await api.sendMessage(card.id, input.trim(), slot);
       setInput('');
     } catch (e2) {
       showToast(e2.message, true);
@@ -142,8 +159,8 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
     return (
       <div className="agent-panel documentation-agent">
         <div className="documentation-action">
-          <ModelPicker providers={config.providers} provider={choice.provider} model={choice.model} onChange={setChoice} disabled={active} />
-          <button className="btn primary document-button" onClick={launch} disabled={running || active || !providerReady || !choice.model.trim() || !canDocument}>
+          <ModelPicker providers={providers} provider={choice.provider} model={choice.model} effort={choice.effort} onChange={setChoice} disabled={active} />
+          <button className="btn primary document-button" onClick={() => launch()} disabled={running || active || !providerReady || !choice.model.trim() || !canDocument}>
             {active ? running ? '⏳ Documentando…' : 'Esperando instrucciones' : documented ? '↻ Documentar de nuevo' : '▶ Documentar'}
           </button>
           {active && <button className="btn danger" onClick={stop}>■ Detener agente</button>}
@@ -180,22 +197,40 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
   return (
     <div className="agent-panel">
       <div className="agent-toolbar">
-        <ModelPicker providers={config.providers} provider={choice.provider} model={choice.model} onChange={setChoice} disabled={active} />
-        <button className="btn primary" onClick={launch} disabled={running || active || !providerReady || !choice.model.trim()}>
-          {active ? running ? '⏳ Trabajando…' : 'Esperando instrucciones' : hasSession ? '↻ Relanzar' : mode === 'define' ? '▶ Definir card' : '▶ Documentar'}
-        </button>
+        <ModelPicker providers={providers} provider={choice.provider} model={choice.model} effort={choice.effort} onChange={setChoice} disabled={active} />
+        {actions ? (
+          actions.map((action) => (
+            <button
+              key={action.task}
+              className={action.primary ? 'btn primary' : 'btn'}
+              onClick={() => launch(action.task)}
+              // Una sesión de diseño que espera instrucciones se puede sustituir por otra tarea.
+              disabled={running || !providerReady || !choice.model.trim() || action.disabled}
+              title={action.title}
+            >
+              {action.label}
+            </button>
+          ))
+        ) : (
+          <button className="btn primary" onClick={() => launch()} disabled={running || active || !providerReady || !choice.model.trim()}>
+            {active ? running ? '⏳ Trabajando…' : 'Esperando instrucciones' : hasSession ? '↻ Relanzar' : mode === 'define' ? '▶ Definir card' : '▶ Documentar'}
+          </button>
+        )}
+        {actions && active && <span className="agent-mode">{running ? '⏳ Trabajando…' : 'Esperando instrucciones'}</span>}
         {active && <button className="btn danger" onClick={stop}>■ Detener agente</button>}
-        <span className="agent-mode">
-          modo: <b>{mode === 'define' ? 'definición' : 'documentación'}</b> (según columna)
-        </span>
+        {!actions && (
+          <span className="agent-mode">
+            modo: <b>{mode === 'define' ? 'definición' : 'documentación'}</b> (según columna)
+          </span>
+        )}
       </div>
 
       <div className="console" ref={consoleRef}>
         {events.length === 0 && (
           <p className="empty">
-            {mode === 'define'
+            {emptyText || (mode === 'define'
               ? 'El agente cogerá tu borrador y lo convertirá en una definición completa según las reglas de os/.'
-              : 'El agente cogerá la definición y creará/actualizará la documentación de producto en workspace/docs/.'}
+              : 'El agente cogerá la definición y creará/actualizará la documentación de producto en workspace/docs/.')}
           </p>
         )}
         {events.map((ev, i) => (
@@ -222,7 +257,19 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
   );
 }
 
+const TASK_LABELS = { design: 'diseñar', comments: 'aplicar comentarios', promote: 'promocionar' };
+
+const SAVED_TEXT = {
+  definition: () => '✦ Definición guardada en la card',
+  design: (ev) => (ev.promoted ? '✦ Diseño promocionado a las páginas canónicas' : '✦ Diseño guardado en la card'),
+};
+
 function describeTool(name, args) {
+  // En vivo llega el resumen ({artboards: n}); en el historial, el manifiesto completo.
+  const artboards = typeof args.artboards === 'number' ? args.artboards : args.manifest?.artboards?.length ?? '?';
+  if (name === 'review_design') return `review_design (${artboards} artboards)`;
+  if (name === 'save_design') return `save_design (${artboards} artboards${args.promoted ? ', promocionado' : ''})`;
+  if (name.startsWith('paper.')) return `🎨 ${name}`;
   if (name === 'save_definition') return `save_definition (${args.chars ?? '?'} caracteres)`;
   if (name === 'review_definition') return `review_definition (${args.chars ?? '?'} caracteres)`;
   if (name === 'save_doc') return `save_doc → ${args.path ?? '?'}`;
