@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
+import ModelPicker from './ModelPicker.jsx';
 
 export default function AgentPanel({ card, config, mode, documentOnly = false, onChanged, showToast }) {
   const [events, setEvents] = useState([]);
   const [running, setRunning] = useState(false);
   const [active, setActive] = useState(false);
   const [hasSession, setHasSession] = useState(false);
-  const [model, setModel] = useState(config.defaultModel);
+  const [choice, setChoice] = useState({ provider: config.defaults.provider, model: config.defaults.model });
+  const providerReady = config.providers.some((p) => p.id === choice.provider && p.ready);
   const [input, setInput] = useState('');
   const consoleRef = useRef(null);
   const streamText = useRef('');
@@ -22,7 +24,7 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
         setHasSession(matchesMode && ev.messages.length > 0);
         setRunning(matchesMode && ev.running);
         setActive(matchesMode && ev.active);
-        if (matchesMode && ev.model) setModel(ev.model);
+        if (matchesMode && ev.model) setChoice({ provider: ev.provider || 'openrouter', model: ev.model });
         if (!matchesMode) {
           setEvents([]);
           return;
@@ -84,7 +86,7 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
       } else if (ev.type === 'started') {
         setHasSession(true);
         setActive(true);
-        setEvents([{ kind: 'info', text: `Agente lanzado · modo ${ev.mode} · ${ev.model}` }]);
+        setEvents([{ kind: 'info', text: `Agente lanzado · modo ${ev.mode} · ${ev.provider} · ${ev.model}` }]);
       } else if (ev.type === 'status') {
         setRunning(ev.running);
         setActive(ev.active);
@@ -107,7 +109,7 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
 
   const launch = async () => {
     try {
-      await api.startAgent(card.id, model);
+      await api.startAgent(card.id, choice.provider, choice.model);
     } catch (e) {
       showToast(e.message, true);
     }
@@ -140,14 +142,12 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
     return (
       <div className="agent-panel documentation-agent">
         <div className="documentation-action">
-          <select value={model} onChange={(e) => setModel(e.target.value)} disabled={active} aria-label="Modelo del agente">
-            {config.models.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <button className="btn primary document-button" onClick={launch} disabled={running || active || !config.hasApiKey || !canDocument}>
+          <ModelPicker providers={config.providers} provider={choice.provider} model={choice.model} onChange={setChoice} disabled={active} />
+          <button className="btn primary document-button" onClick={launch} disabled={running || active || !providerReady || !choice.model.trim() || !canDocument}>
             {active ? running ? '⏳ Documentando…' : 'Esperando instrucciones' : documented ? '↻ Documentar de nuevo' : '▶ Documentar'}
           </button>
           {active && <button className="btn danger" onClick={stop}>■ Detener agente</button>}
-          {!config.hasApiKey && <p className="empty">Configura OPENROUTER_API_KEY para lanzar el agente.</p>}
+          {!providerReady && <p className="empty">Configura un proveedor de IA en la pestaña IA para lanzar el agente.</p>}
           {!canDocument && <p className="empty">Esta card necesita una Definición IA + antes de documentarse.</p>}
           {canDocument && !running && !events.length && (
             <p className="documentation-help">
@@ -180,10 +180,8 @@ export default function AgentPanel({ card, config, mode, documentOnly = false, o
   return (
     <div className="agent-panel">
       <div className="agent-toolbar">
-        <select value={model} onChange={(e) => setModel(e.target.value)} disabled={active}>
-          {config.models.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <button className="btn primary" onClick={launch} disabled={running || active || !config.hasApiKey}>
+        <ModelPicker providers={config.providers} provider={choice.provider} model={choice.model} onChange={setChoice} disabled={active} />
+        <button className="btn primary" onClick={launch} disabled={running || active || !providerReady || !choice.model.trim()}>
           {active ? running ? '⏳ Trabajando…' : 'Esperando instrucciones' : hasSession ? '↻ Relanzar' : mode === 'define' ? '▶ Definir card' : '▶ Documentar'}
         </button>
         {active && <button className="btn danger" onClick={stop}>■ Detener agente</button>}

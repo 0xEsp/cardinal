@@ -7,6 +7,9 @@ import { buildFeaturePrompt } from './prompt.js';
 import * as docs from './docs.js';
 import * as agent from './agent.js';
 import * as git from './git.js';
+import { mcpRouter } from './mcp.js';
+import { PROVIDERS, defaults, getProvider, providerStatuses, saveDefaults, scheduleCliUpdates } from './providers/index.js';
+import { installCli } from './providers/cli.js';
 
 // Carga .env sin dependencia extra
 const envFile = path.join(ROOT, '.env');
@@ -19,12 +22,8 @@ if (fs.existsSync(envFile)) {
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
-
-const defaultModel = process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5';
-const additionalModels = ['deepseek/deepseek-v4.1-flash', 'openai/gpt-5.6-luna'];
-const configuredModels = (process.env.MODELS || defaultModel)
-  .split(',').map((model) => model.trim()).filter(Boolean);
-const availableModels = [...new Set([defaultModel, ...configuredModels, ...additionalModels])];
+// Herramientas del harness para los CLIs (solo accesible desde el contenedor).
+app.use(mcpRouter());
 
 const wrap = (fn) => async (req, res) => {
   try {
@@ -36,13 +35,57 @@ const wrap = (fn) => async (req, res) => {
 };
 
 // ---- config ----
-app.get('/api/config', wrap(() => ({
-  models: availableModels,
-  defaultModel,
-  hasApiKey: Boolean(process.env.OPENROUTER_API_KEY),
+app.get('/api/config', wrap(async () => ({
+  providers: (await providerStatuses()).map(({ id, label, kind, ready, message, defaultModel }) => ({ id, label, kind, ready, message, defaultModel })),
+  defaults: defaults(),
   autoPush: process.env.AUTO_PUSH === 'true',
   columns: cards.COLUMNS,
 })));
+
+// ---- proveedores de IA ----
+// Las credenciales nunca se devuelven al cliente: solo si están configuradas.
+app.get('/api/providers', wrap(async () => ({ providers: await providerStatuses(), defaults: defaults() })));
+app.put('/api/providers/defaults', wrap((req) => saveDefaults(req.body || {})));
+app.get('/api/providers/:id/models', wrap(async (req) => {
+  const models = await getProvider(req.params.id).listModels({ refresh: req.query.refresh === '1' });
+  return { models };
+}));
+app.post('/api/providers/:id/install', wrap((req) => {
+  const provider = getProvider(req.params.id);
+  if (provider.kind !== 'cli') throw Object.assign(new Error('Este proveedor no usa CLI'), { status: 400 });
+  const { running, error } = installCli(provider.id);
+  return { running, error };
+}));
+app.post('/api/providers/:id/verify', wrap(async (req) => {
+  const provider = getProvider(req.params.id);
+  const model = String(req.body?.model || '').trim() || provider.defaultModel;
+  const answer = await provider.complete({ model, system: 'Responde únicamente con la palabra OK.', user: 'ping', signal: AbortSignal.timeout(120000) });
+  return { ok: true, model, answer: String(answer || '').trim().slice(0, 200) };
+}));
+app.delete('/api/providers/:id/credentials', wrap(async (req) => {
+  await getProvider(req.params.id).logout();
+  return { ok: true };
+}));
+app.put('/api/providers/openrouter/credentials', wrap((req) => {
+  PROVIDERS.openrouter.saveKey(req.body?.apiKey);
+  return { ok: true };
+}));
+app.put('/api/providers/claude/credentials', wrap((req) => {
+  PROVIDERS.claude.saveToken(req.body?.token);
+  return { ok: true };
+}));
+app.put('/api/providers/codex/credentials', wrap((req) => {
+  PROVIDERS.codex.saveAuthJson(req.body?.authJson);
+  return { ok: true };
+}));
+app.post('/api/providers/codex/device-login', wrap(() => {
+  const { url, code, status, error } = PROVIDERS.codex.startDeviceLogin();
+  return { url, code, status, error };
+}));
+app.delete('/api/providers/codex/device-login', wrap(() => {
+  PROVIDERS.codex.cancelDeviceLogin();
+  return { ok: true };
+}));
 
 // ---- cards ----
 app.get('/api/cards', wrap(() => cards.listCards()));
@@ -83,7 +126,11 @@ const onFinish = async () => {
   }
 };
 
-app.post('/api/agent/:cardId/start', wrap((req) => agent.startAgent(req.params.cardId, { model: req.body?.model, onFinish })));
+app.post('/api/agent/:cardId/start', wrap((req) => agent.startAgent(req.params.cardId, {
+  provider: req.body?.provider,
+  model: req.body?.model,
+  onFinish,
+})));
 app.post('/api/agent/:cardId/stop', wrap((req) => agent.stopAgent(req.params.cardId)));
 app.post('/api/agent/:cardId/message', wrap((req) => {
   agent.sendMessage(req.params.cardId, req.body.content, { onFinish });
@@ -118,4 +165,5 @@ if (fs.existsSync(dist)) {
 const port = process.env.PORT || 4400;
 app.listen(port, '0.0.0.0', () => {
   console.log(`product-os escuchando en http://0.0.0.0:${port}`);
+  scheduleCliUpdates();
 });

@@ -9,7 +9,7 @@ os/               ← las "reglas": cómo se define una card, criterios de QA, g
                     plantilla del prompt para el feature-builder (feature-prompt.md)
 workspace/docs/   ← documentación de producto en .md (la fuente de verdad, versionada en git)
 data/             ← SQLite (cards + sesiones + historial de agentes; fuera de git, volumen en Docker)
-server/           ← API Node/Express + agente OpenRouter (streaming SSE + tool-use)
+server/           ← API Node/Express + agentes (OpenRouter, Codex o Claude Code) con streaming SSE + tool-use
 web/              ← dashboard React (kanban, modal de card, consola de agente, editor de docs)
 ```
 
@@ -18,7 +18,7 @@ Las **cards viven en SQLite** (propiedades, borrador, definición, sesiones de a
 El flujo:
 
 1. Creas una card en el board, escribes tu **borrador** con tus palabras y puedes añadir comentarios como notas privadas. Las cards se pueden priorizar arrastrándolas verticalmente dentro de cada columna.
-2. Botón **▶ Definir card**: un agente (OpenRouter) busca en `workspace/docs/`, lee los documentos relevantes, aplica las reglas de `os/` y genera la **definición completa** (producto + técnica + QA). Una validación estructural y una revisión independiente deben aprobarla antes de guardarla. Tu borrador nunca se toca. Puedes seguir iterando con el agente por chat.
+2. Botón **▶ Definir card**: un agente (con el proveedor y modelo que elijas) busca en `workspace/docs/`, lee los documentos relevantes, aplica las reglas de `os/` y genera la **definición completa** (producto + técnica + QA). Una validación estructural y una revisión independiente deben aprobarla antes de guardarla. Tu borrador nunca se toca. Puedes seguir iterando con el agente por chat.
 3. Botón **⧉ Copiar como prompt** en la pestaña Definición: copia la definición envuelta en la plantilla `os/feature-prompt.md`, lista para pegar en el feature-builder del proyecto de turno.
 4. Cuando el desarrollo termina, mueves la card a **Done Dev**. Un icono muestra si está pendiente de documentar o documentada. Al abrirla aparece el botón **Documentar**, que lanza un agente específico para buscar contexto, analizar la Definición IA +, revisar el resultado y crear o actualizar los `.md` de `workspace/docs/`.
 5. Mueves la card a **Done** para archivarla: la columna Done siempre se muestra vacía (es un sumidero); con "ver done (N)" del filtro puedes consultar las archivadas, también filtradas por stack/versión.
@@ -30,10 +30,39 @@ El **modo del agente lo decide la columna**: `backlog/todo/in-progress` → defi
 
 La pestaña **Ejecuciones** de cada card conserva el modelo utilizado, la revisión de contexto, las búsquedas y lecturas de documentación, los archivos escritos y el resultado de validación/revisión.
 
+## Proveedores de IA
+
+Cada agente se lanza con un **proveedor + modelo** que eliges en la propia card (el valor por defecto se configura en la pestaña **IA**):
+
+| Proveedor | Cómo se paga | Cómo se conecta |
+|---|---|---|
+| **OpenRouter** | API key, pago por uso | Pega la key en la pestaña IA (o `OPENROUTER_API_KEY` en `.env`) |
+| **Codex** | Tu suscripción de ChatGPT (Plus/Pro) | Pestaña IA → *Instalar* CLI → *Conectar cuenta ChatGPT*: abre la URL en cualquier dispositivo e introduce el código. Alternativa: pegar el `~/.codex/auth.json` de un ordenador donde hayas hecho `codex login` |
+| **Claude** | Tu suscripción Pro/Max | Pestaña IA → *Instalar* CLI. En tu ordenador ejecuta `claude setup-token`, inicia sesión y pega el token (`sk-ant-oat…`, dura un año) |
+
+Cómo funciona por dentro:
+
+- Con **OpenRouter** el bucle de herramientas lo ejecuta el propio servidor.
+- Con **Codex y Claude** el bucle lo ejecuta el **CLI oficial** (`codex exec` / `claude -p`) y las herramientas del harness (`search_docs`, `read_doc`, `review_*`, `save_*`) se le ofrecen por un **servidor MCP interno** (`/mcp/<token>`, solo accesible desde el propio contenedor y ligado a la card). Las herramientas nativas de los CLIs (shell, edición de ficheros, búsqueda web) quedan desactivadas. La validación y la revisión obligatoria funcionan igual con cualquier proveedor.
+- El **revisor independiente** usa por defecto el mismo proveedor y modelo que el agente; en la pestaña IA puedes asignarle otro.
+
+**Modelos nuevos sin redesplegar:** el catálogo de OpenRouter se lee en vivo de su API y el de Codex sale del propio CLI, que lo refresca desde OpenAI con tu cuenta. En Claude los alias (`opus`, `sonnet`, `haiku`…) apuntan siempre al último modelo que conoce el CLI. El campo de modelo admite además cualquier id escrito a mano. Los CLIs **no van en la imagen**: se instalan en `data/cli` (volumen persistente) y se actualizan con el botón *Actualizar* o automáticamente una vez al día (`CLI_AUTO_UPDATE=false` lo desactiva).
+
+Todo lo que necesitan los proveedores vive en el volumen de datos y sobrevive a nuevas imágenes:
+
+```text
+data/secrets/   ← API key de OpenRouter y token de Claude (ficheros 0600; nunca se devuelven por la API)
+data/codex/     ← CODEX_HOME: auth.json (Codex lo refresca solo) y sesiones
+data/claude/    ← CLAUDE_CONFIG_DIR: sesiones de Claude Code
+data/cli/       ← CLIs instalados (no se incluye en la copia de seguridad del despliegue)
+```
+
+> ⚠ **Condiciones de uso.** OpenAI permite usar la suscripción de ChatGPT con el CLI oficial de Codex. Anthropic solo permite usar la suscripción Pro/Max a través de Claude Code y para uso personal; aquí siempre se invoca el binario oficial, pero revisa sus condiciones vigentes antes de depender de ello. Los límites de uso de la suscripción (ventanas de 5 h y cupo semanal) se aplican también a las revisiones.
+
 ## Arranque en local
 
 ```bash
-cp .env.example .env   # y pon tu OPENROUTER_API_KEY
+cp .env.example .env   # opcional: OPENROUTER_API_KEY (también se puede poner desde la pestaña IA)
 
 cd server && npm install && npm run dev   # API en :4400
 cd web && npm install && npm run dev      # UI en :5173 (proxy a la API)
@@ -134,9 +163,11 @@ Exporta tus páginas de Notion como markdown y déjalas en `workspace/docs/` (ke
 
 | Variable | Descripción |
 |---|---|
-| `OPENROUTER_API_KEY` | Clave de OpenRouter (obligatoria para los agentes) |
-| `OPENROUTER_MODEL` | Modelo por defecto |
-| `MODELS` | Modelos del selector, separados por coma |
+| `OPENROUTER_API_KEY` | Clave de OpenRouter (opcional; la que se guarda desde la pestaña IA tiene prioridad) |
+| `OPENROUTER_MODEL` | Modelo por defecto de OpenRouter |
+| `MODELS` | Modelos de reserva si el catálogo de OpenRouter no responde, separados por coma |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Token de `claude setup-token` (opcional; alternativa a pegarlo en la pestaña IA) |
+| `CLI_AUTO_UPDATE` | `false` desactiva la actualización diaria automática de los CLIs de Codex y Claude |
 | `PORT` | Puerto del servidor (4400) |
 | `PRODUCT_OS_IMAGE` | Etiqueta de la imagen Docker que ejecutará Compose |
 | `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/justgame-product-os/data` |

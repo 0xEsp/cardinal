@@ -9,7 +9,11 @@ COPY web/ ./
 RUN npm run build
 
 FROM node:22-alpine
-RUN apk add --no-cache git openssh-client
+# libgcc/libstdc++/ripgrep: los necesita el binario musl de Claude Code.
+# Los CLIs de Codex y Claude NO se instalan aquí: el Product OS los instala y
+# actualiza en el volumen de datos (data/cli) desde la pestaña IA, para tener
+# modelos nuevos sin construir otra imagen.
+RUN apk add --no-cache git openssh-client libgcc libstdc++ ripgrep
 WORKDIR /app
 # Copia el árbol completo del repo (ver .dockerignore): así el .git montado en
 # runtime ve un working tree coherente y pull/push/status funcionan.

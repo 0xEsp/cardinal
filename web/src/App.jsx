@@ -3,6 +3,7 @@ import { api } from './api.js';
 import Board from './Board.jsx';
 import CardModal from './CardModal.jsx';
 import DocsView from './DocsView.jsx';
+import ProvidersView from './ProvidersView.jsx';
 
 export default function App() {
   const [view, setView] = useState('board');
@@ -24,10 +25,14 @@ export default function App() {
     setGitStatus(gs);
   }, []);
 
-  useEffect(() => {
+  const loadConfig = useCallback(() => {
     api.config().then(setConfig).catch((e) => showToast(e.message, true));
+  }, [showToast]);
+
+  useEffect(() => {
+    loadConfig();
     refresh();
-  }, [refresh, showToast]);
+  }, [loadConfig, refresh]);
 
   // Al volver a la app (cambio de pestaña/app en móvil), re-sincroniza el estado
   useEffect(() => {
@@ -73,6 +78,7 @@ export default function App() {
         <nav>
           <button className={view === 'board' ? 'tab active' : 'tab'} onClick={() => setView('board')}>Board</button>
           <button className={view === 'docs' ? 'tab active' : 'tab'} onClick={() => setView('docs')}>Docs</button>
+          <button className={view === 'ai' ? 'tab active' : 'tab'} onClick={() => setView('ai')}>IA</button>
         </nav>
         <div className="git-actions">
           {gitStatus && (
@@ -85,15 +91,16 @@ export default function App() {
         </div>
       </header>
 
-      {config && !config.hasApiKey && (
-        <div className="banner">Falta OPENROUTER_API_KEY en .env — los agentes no podrán lanzarse.</div>
+      {config && !config.providers.some((p) => p.ready) && view !== 'ai' && (
+        <div className="banner">
+          No hay ningún proveedor de IA configurado — los agentes no podrán lanzarse.{' '}
+          <button className="banner-link" onClick={() => setView('ai')}>Configurar</button>
+        </div>
       )}
 
-      {view === 'board' ? (
-        <Board cards={cards} onOpen={setOpenCardId} onChanged={refresh} showToast={showToast} />
-      ) : (
-        <DocsView onSaved={refresh} showToast={showToast} />
-      )}
+      {view === 'board' && <Board cards={cards} onOpen={setOpenCardId} onChanged={refresh} showToast={showToast} />}
+      {view === 'docs' && <DocsView onSaved={refresh} showToast={showToast} />}
+      {view === 'ai' && <ProvidersView onConfigChanged={loadConfig} showToast={showToast} />}
 
       {openCard && config && (
         <CardModal

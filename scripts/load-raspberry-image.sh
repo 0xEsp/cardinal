@@ -57,7 +57,13 @@ restore_on_failure() {
 trap restore_on_failure ERR
 mkdir -p "$ROOT_DIR/releases"
 BACKUP="$ROOT_DIR/releases/product-os-data-$(date +%Y%m%d-%H%M%S)-$$.tar.gz"
-tar -czf "$BACKUP" -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
+# Los CLIs de IA (cli/, cientos de MB) se reinstalan desde la pestaña IA y
+# agent-work/ es temporal: no forman parte de la copia. Credenciales y
+# sesiones (secrets/, codex/, claude/) sí se conservan.
+tar -czf "$BACKUP" \
+  --exclude="$(basename "$DATA_DIR")/cli" \
+  --exclude="$(basename "$DATA_DIR")/agent-work" \
+  -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
 echo "Copia de datos: $BACKUP"
 
 echo "Cargando imagen desde $ARCHIVE..."
