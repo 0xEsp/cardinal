@@ -730,8 +730,11 @@ async function launchAgent(cardId, { slot = 'main', task, provider: providerId, 
   }
   if (existing?.active) {
     // En diseño hay varias tareas (diseñar, comentarios, promocionar): una
-    // sesión que solo espera instrucciones se cierra al lanzar otra.
-    if (slot !== 'design') {
+    // sesión que solo espera instrucciones se cierra al lanzar otra. En main
+    // pasa lo mismo si la card cambió de columna (p. ej. una definición que
+    // quedó esperando instrucciones y ahora toca documentar): esa sesión ya
+    // no es visible en la UI y bloquearía el nuevo modo.
+    if (slot !== 'design' && existing.mode === mode) {
       throw Object.assign(new Error('Espera a que el agente se detenga antes de relanzarlo'), { status: 409 });
     }
     stopAgent(cardId, slot);

@@ -59,7 +59,12 @@ export default function App() {
     try {
       const r = await api.gitPush();
       await refresh();
-      showToast(r.committed ? 'Workspace commiteado y subido' : 'Nada nuevo que subir');
+      showToast(
+        !r.pushed ? 'No hay remoto configurado: no se ha subido nada'
+          : r.committed ? `Subidos ${r.files.length} fichero(s) del workspace`
+          : r.ahead > 0 ? 'Sin cambios nuevos; commits pendientes subidos'
+          : 'Nada nuevo que subir: la documentación ya está en el remoto'
+      );
     } catch (e) {
       showToast(`Push falló: ${e.message}`, true);
     } finally {
@@ -82,7 +87,7 @@ export default function App() {
         </nav>
         <div className="git-actions">
           {gitStatus && (
-            <span className="git-status" title={gitStatus.files?.join('\n') || 'sin cambios'}>
+            <span className="git-status" title={gitStatus.files?.length ? gitStatus.files.join('\n') : 'sin cambios en workspace/ ni os/'}>
               {gitStatus.branch} · {gitStatus.dirty > 0 ? `${gitStatus.dirty} cambios` : 'limpio'}
             </span>
           )}

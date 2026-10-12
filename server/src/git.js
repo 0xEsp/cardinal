@@ -21,14 +21,23 @@ async function remoteFor(command) {
   return u.toString();
 }
 
+// Lo único que sube el botón Push (ver commitAndPush).
+const PUSH_PATHS = ['workspace', 'os'];
+const inPushPaths = (file) => PUSH_PATHS.some((dir) => file === dir || file.startsWith(`${dir}/`));
+
 export async function status() {
   const s = await git.status();
+  const files = s.files.map((f) => f.path);
+  const pending = files.filter(inPushPaths);
   return {
     branch: s.current,
     ahead: s.ahead,
     behind: s.behind,
-    dirty: s.files.length,
-    files: s.files.map((f) => f.path),
+    // `dirty` cuenta solo lo que Push subiría; el resto (código, ficheros
+    // locales del host) se commitea a mano y no debe sugerir que falta un push.
+    dirty: pending.length,
+    files: pending,
+    otherFiles: files.filter((f) => !inPushPaths(f)),
   };
 }
 
@@ -43,7 +52,7 @@ export async function pull() {
 // Commitea SOLO el workspace (docs de producto, que es lo que generan los agentes)
 // y las reglas de os/. Los cambios de código del dashboard se commitean a mano.
 export async function commitAndPush(message) {
-  await git.add(['workspace', 'os']);
+  await git.add(PUSH_PATHS);
   const s = await git.status();
   const stagedFiles = (await git.raw(['diff', '--cached', '--name-only', '--', 'workspace', 'os']))
     .split('\n').filter(Boolean);
@@ -56,6 +65,11 @@ export async function commitAndPush(message) {
     ]);
   }
   const remote = await remoteFor('push');
-  if (remote) await git.push(remote, s.current);
-  return { committed: stagedFiles.length > 0, pushed: Boolean(remote), files: stagedFiles };
+  if (remote) {
+    await git.push(remote, s.current);
+    // Al empujar a una URL con token (no a "origin") Git no actualiza
+    // origin/<rama> y el estado diría "ahead" para siempre.
+    if (remote !== 'origin') await git.raw(['update-ref', `refs/remotes/origin/${s.current}`, 'HEAD']);
+  }
+  return { committed: stagedFiles.length > 0, pushed: Boolean(remote), files: stagedFiles, ahead: s.ahead };
 }
