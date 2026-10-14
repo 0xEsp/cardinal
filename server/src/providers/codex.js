@@ -28,7 +28,9 @@ function extraMcpArgs(extraMcp = []) {
       '-c', `${key}.required=true`,
       '-c', `${key}.startup_timeout_sec=30`,
       '-c', `${key}.tool_timeout_sec=600`,
-      '-c', `${key}.default_tools_approval_mode=${toml('auto')}`,
+      // Sin nadie que apruebe (approval_policy=never), 'auto' rechaza las herramientas
+      // que escriben; el control lo da enabled_tools.
+      '-c', `${key}.default_tools_approval_mode=${toml('approve')}`,
     );
   }
   return { args, envVars };
@@ -184,7 +186,7 @@ export const codex = {
       '-c', `${mcp}.startup_timeout_sec=30`,
       // review_* llama a otro modelo: necesita margen.
       '-c', `${mcp}.tool_timeout_sec=900`,
-      '-c', `${mcp}.default_tools_approval_mode=${toml('auto')}`,
+      '-c', `${mcp}.default_tools_approval_mode=${toml('approve')}`,
       ...extra.args,
       ...(sessionId ? [sessionId] : []),
       '-',
