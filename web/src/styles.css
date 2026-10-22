@@ -381,13 +381,14 @@ button.chip { cursor: pointer; }
 .doc-back { display: none; }
 .filter-toggle { display: none; }
 
-/* ---- diseño (Paper) ---- */
+/* ---- diseño (Paper o Moki) ---- */
 .chip.design { border-color: #f07ad8; color: #f07ad8; }
 .chip.design.stale { border-color: #ffb84d; color: #ffb84d; }
 .documentation-state.stale { color: #ffb84d; }
 .design-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
 .design-summary { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-height: 40%; overflow-y: auto; }
 .design-link { color: var(--accent-2); font-size: 13px; }
+.design-tool-choice { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .design-artboards { width: 100%; border-collapse: collapse; font-size: 12px; }
 .design-artboards th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
 .design-artboards td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }

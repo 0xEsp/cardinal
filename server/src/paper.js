@@ -1,4 +1,5 @@
 import { getSetting, setSetting, getSecret, setSecret, deleteSecret, secretSource } from './settings.js';
+import { callRemoteTool } from './remote-mcp.js';
 
 // Paper (diseño) vía el puente MCP que corre en el Mac donde está abierta la
 // app de Paper (scripts/paper-bridge/). Sin el puente encendido, el Product OS
@@ -17,8 +18,9 @@ export const PAPER_READ_TOOLS = [
 
 // Escritura para el agente de diseño. Quedan fuera crear/renombrar ficheros,
 // exportar y tocar los tokens del sistema de diseño (eso lo decide Manu).
+// update_pages renombra páginas (la promoción marca la de la card para borrar).
 export const PAPER_WRITE_TOOLS = [
-  'create_page', 'rename_pages', 'create_artboard', 'write_html', 'set_text_content', 'rename_nodes',
+  'create_page', 'update_pages', 'create_artboard', 'write_html', 'set_text_content', 'rename_nodes',
   'update_styles', 'duplicate_nodes', 'move_nodes', 'delete_nodes', 'finish_working_on_nodes',
   'set_comment_thread_status',
 ];
@@ -93,39 +95,16 @@ export async function paperStatus() {
   }
 }
 
-/** Cliente MCP mínimo contra el puente (solo para listar ficheros en Ajustes). */
-async function callPaperTool(name, args = {}) {
-  const config = paperConfig();
-  const headers = { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
-  const post = async (body, sessionId) => {
-    const res = await fetch(config.url, {
-      method: 'POST',
-      headers: sessionId ? { ...headers, 'Mcp-Session-Id': sessionId } : headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20000),
-    });
-    const text = await res.text();
-    return { res, json: text ? JSON.parse(text) : null };
-  };
-  const init = await post({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'gotty-product-os', version: '1' } } });
-  if (init.json?.error) throw new Error(init.json.error.message);
-  const sessionId = init.res.headers.get('mcp-session-id');
-  try {
-    await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, sessionId);
-    const call = await post({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, sessionId);
-    if (call.json?.error) throw new Error(call.json.error.message);
-    const text = call.json?.result?.content?.find((item) => item.type === 'text')?.text || '';
-    return JSON.parse(text);
-  } finally {
-    fetch(config.url, { method: 'DELETE', headers: { ...headers, 'Mcp-Session-Id': sessionId } }).catch(() => {});
-  }
-}
-
 export async function listPaperFiles() {
   const status = await paperStatus();
   if (!status.bridge || !status.paperApp) throw Object.assign(new Error(status.message), { status: 400 });
-  const data = await callPaperTool('list_resources');
+  const config = paperConfig();
+  const data = await callRemoteTool({ url: config.url, token: config.token, name: 'list_resources' });
   return (data.resources || []).filter((item) => item.type === 'file').map((file) => ({ id: file.id, name: file.name }));
+}
+
+export function paperPageUrl(fileId, pageId) {
+  return `https://app.paper.design/file/${encodeURIComponent(fileId)}/${encodeURIComponent(pageId)}`;
 }
 
 /**

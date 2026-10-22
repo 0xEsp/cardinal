@@ -58,8 +58,8 @@ async function effortLevels() {
   return effortCache.levels;
 }
 
-// Config MCP en un fichero 0600 (lleva el token de Paper) y la lista de
-// herramientas permitidas: las nuestras completas y de Paper solo las indicadas.
+// Config MCP en un fichero 0600 (lleva el token de Paper/Moki) y la lista de
+// herramientas permitidas: las nuestras completas y de Paper/Moki solo las indicadas.
 function mcpSetup(file, servers = {}, extraMcp = []) {
   const mcpServers = { ...servers };
   const allowed = Object.keys(servers).map((name) => `mcp__${name}`);
@@ -168,7 +168,7 @@ export const claude = {
             onEvent({ type: 'flush' });
           }
         } else if (event.type === 'assistant') {
-          // Llamadas a MCP externos (Paper): no pasan por nuestro servidor, se avisan para la consola.
+          // Llamadas a MCP externos (Paper, Moki): no pasan por nuestro servidor, se avisan para la consola.
           for (const block of event.message?.content || []) {
             const match = block.type === 'tool_use' && block.name?.match(/^mcp__(.+?)__(.+)$/);
             if (match && match[1] !== MCP_SERVER_NAME) onEvent({ type: 'external_tool', server: match[1], tool: match[2] });
@@ -185,7 +185,7 @@ export const claude = {
     return { sessionId: result?.session_id || newSession };
   },
 
-  // extraMcp permite que el revisor consulte Paper (capturas) antes de responder.
+  // extraMcp permite que el revisor consulte el diseño (capturas) antes de responder.
   async complete({ system, user, model, effort, extraMcp, signal }) {
     const bin = cliBinary('claude');
     if (!bin) throw new Error('El CLI de Claude Code no está instalado');

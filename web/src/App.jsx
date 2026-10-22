@@ -105,7 +105,7 @@ export default function App() {
 
       {view === 'board' && <Board cards={cards} onOpen={setOpenCardId} onChanged={refresh} showToast={showToast} />}
       {view === 'docs' && <DocsView onSaved={refresh} showToast={showToast} />}
-      {view === 'ai' && <ProvidersView onConfigChanged={loadConfig} showToast={showToast} />}
+      {view === 'ai' && <ProvidersView config={config} onConfigChanged={loadConfig} showToast={showToast} />}
 
       {openCard && config && (
         <CardModal

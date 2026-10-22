@@ -274,7 +274,7 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
                       {card.design && (
                         <span
                           className={card.designStatus === 'stale' ? 'chip design stale' : 'chip design'}
-                          title={card.designStatus === 'stale' ? 'Diseño desactualizado respecto a la definición' : 'Tiene diseño en Paper'}
+                          title={card.designStatus === 'stale' ? 'Diseño desactualizado respecto a la definición' : `Tiene diseño en ${card.design.tool === 'moki' ? 'Moki' : 'Paper'}`}
                         >
                           🎨{card.designStatus === 'stale' ? ' ⚠' : ''}
                         </span>

@@ -11,6 +11,8 @@ import { mcpRouter } from './mcp.js';
 import { PROVIDERS, defaults, getProvider, providerStatuses, saveDefaults, scheduleCliUpdates } from './providers/index.js';
 import { installCli } from './providers/cli.js';
 import { deletePaperToken, listPaperFiles, paperStatus, savePaperConfig } from './paper.js';
+import { deleteMokiToken, listMokiFiles, mokiStatus, saveMokiConfig } from './moki.js';
+import { designToolsStatus, saveDefaultDesignTool } from './design-tools.js';
 
 // Carga .env sin dependencia extra
 const envFile = path.join(ROOT, '.env');
@@ -38,7 +40,7 @@ const wrap = (fn) => async (req, res) => {
 // ---- config ----
 app.get('/api/config', wrap(async () => ({
   providers: (await providerStatuses()).map(({ id, label, kind, ready, message, defaultModel }) => ({ id, label, kind, ready, message, defaultModel })),
-  paper: await paperStatus(),
+  designTools: await designToolsStatus(),
   defaults: defaults(),
   autoPush: process.env.AUTO_PUSH === 'true',
   columns: cards.COLUMNS,
@@ -93,6 +95,25 @@ app.delete('/api/paper/token', wrap(() => {
 }));
 app.get('/api/paper/files', wrap(async () => ({ files: await listPaperFiles() })));
 
+// ---- Moki (diseño) ----
+// Servidor propio en la red local con MCP por HTTP: sin puente. El token nunca se devuelve.
+app.get('/api/moki', wrap(() => mokiStatus()));
+app.put('/api/moki', wrap(async (req) => {
+  saveMokiConfig(req.body || {});
+  return mokiStatus();
+}));
+app.delete('/api/moki/token', wrap(() => {
+  deleteMokiToken();
+  return { ok: true };
+}));
+app.get('/api/moki/files', wrap(async () => ({ files: await listMokiFiles() })));
+
+// Herramienta de diseño por defecto para las cards nuevas (paper | moki).
+app.put('/api/design-tools/default', wrap(async (req) => {
+  saveDefaultDesignTool(req.body?.tool);
+  return designToolsStatus();
+}));
+
 app.post('/api/providers/codex/device-login', wrap(() => {
   const { url, code, status, error } = PROVIDERS.codex.startDeviceLogin();
   return { url, code, status, error };
@@ -141,13 +162,15 @@ const onFinish = async () => {
   }
 };
 
-// slot: "main" (definición/documentación) o "design" (Paper). task solo en design:
-// design | comments | promote.
+// slot: "main" (definición/documentación) o "design" (Paper o Moki). task solo en
+// design: design | comments | promote. designTool (paper | moki) solo cuenta si la
+// card aún no tiene diseño; si no, se usa el de Ajustes.
 const slotOf = (req) => String(req.query.slot || req.body?.slot || 'main');
 
 app.post('/api/agent/:cardId/start', wrap((req) => agent.startAgent(req.params.cardId, {
   slot: slotOf(req),
   task: req.body?.task,
+  designTool: req.body?.designTool,
   provider: req.body?.provider,
   model: req.body?.model,
   effort: req.body?.effort,

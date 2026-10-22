@@ -12,7 +12,7 @@ fs.mkdirSync(CODEX_HOME, { recursive: true, mode: 0o700 });
 const env = () => ({ CODEX_HOME });
 const toml = (value) => JSON.stringify(value); // un string/array JSON es TOML válido
 
-// Servidores MCP externos (p. ej. Paper). El token viaja por variable de
+// Servidores MCP externos (p. ej. Paper o Moki). El token viaja por variable de
 // entorno (bearer_token_env_var) para no aparecer en la línea de comandos.
 function extraMcpArgs(extraMcp = []) {
   const args = [];
@@ -203,7 +203,7 @@ export const codex = {
         if (!event) return;
         if (event.type === 'thread.started') threadId = event.thread_id;
         else if (event.type === 'item.started' && event.item?.type === 'mcp_tool_call' && event.item.server !== MCP_SERVER_NAME) {
-          // Llamadas a MCP externos (Paper): no pasan por nuestro servidor, se avisan para la consola.
+          // Llamadas a MCP externos (Paper, Moki): no pasan por nuestro servidor, se avisan para la consola.
           onEvent({ type: 'external_tool', server: event.item.server, tool: event.item.tool });
         } else if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
           onEvent({ type: 'text', text: event.item.text });
@@ -216,7 +216,7 @@ export const codex = {
     return { sessionId: threadId };
   },
 
-  // extraMcp permite que el revisor consulte Paper (capturas) antes de responder.
+  // extraMcp permite que el revisor consulte el diseño (capturas) antes de responder.
   async complete({ system, user, model, effort, extraMcp, signal }) {
     const bin = cliBinary('codex');
     if (!bin) throw new Error('El CLI de Codex no está instalado');

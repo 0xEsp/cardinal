@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import ModelPicker from './ModelPicker.jsx';
 
-// slot "design": el agente de diseño solo puede usar proveedores CLI (Paper va por MCP).
+// slot "design": el agente de diseño solo puede usar proveedores CLI (Paper y Moki van por MCP).
 function initialChoice(config, slot) {
   const { defaults, providers } = config;
   if (slot !== 'design' || providers.find((p) => p.id === defaults.provider)?.kind === 'cli') {
@@ -15,8 +15,9 @@ function initialChoice(config, slot) {
 /**
  * Consola + chat de un agente. `actions` sustituye el botón de lanzar por
  * varias tareas (p. ej. diseñar / aplicar comentarios / promocionar).
+ * `launchParams` se añade al lanzar (p. ej. la herramienta de diseño elegida).
  */
-export default function AgentPanel({ card, config, mode, slot = 'main', actions = null, emptyText = null, documentOnly = false, onChanged, showToast }) {
+export default function AgentPanel({ card, config, mode, slot = 'main', actions = null, launchParams = null, emptyText = null, documentOnly = false, onChanged, showToast }) {
   const [events, setEvents] = useState([]);
   const [running, setRunning] = useState(false);
   const [active, setActive] = useState(false);
@@ -101,7 +102,8 @@ export default function AgentPanel({ card, config, mode, slot = 'main', actions 
       } else if (ev.type === 'started') {
         setHasSession(true);
         setActive(true);
-        setEvents([{ kind: 'info', text: `Agente lanzado · ${ev.task ? `diseño (${TASK_LABELS[ev.task] || ev.task})` : `modo ${ev.mode}`} · ${ev.provider} · ${ev.model}${ev.effort ? ` · effort ${ev.effort}` : ''}` }]);
+        const designLabel = ev.designTool ? config.designTools?.tools?.[ev.designTool]?.label || ev.designTool : null;
+        setEvents([{ kind: 'info', text: `Agente lanzado · ${ev.task ? `diseño (${TASK_LABELS[ev.task] || ev.task})${designLabel ? ` en ${designLabel}` : ''}` : `modo ${ev.mode}`} · ${ev.provider} · ${ev.model}${ev.effort ? ` · effort ${ev.effort}` : ''}` }]);
       } else if (ev.type === 'info') {
         setEvents((prev) => [...prev, { kind: 'info', text: ev.message }]);
       } else if (ev.type === 'status') {
@@ -126,7 +128,7 @@ export default function AgentPanel({ card, config, mode, slot = 'main', actions 
 
   const launch = async (task) => {
     try {
-      await api.startAgent(card.id, { slot, task, ...choice });
+      await api.startAgent(card.id, { slot, task, ...choice, ...launchParams });
     } catch (e) {
       showToast(e.message, true);
     }
@@ -269,7 +271,7 @@ function describeTool(name, args) {
   const artboards = typeof args.artboards === 'number' ? args.artboards : args.manifest?.artboards?.length ?? '?';
   if (name === 'review_design') return `review_design (${artboards} artboards)`;
   if (name === 'save_design') return `save_design (${artboards} artboards${args.promoted ? ', promocionado' : ''})`;
-  if (name.startsWith('paper.')) return `🎨 ${name}`;
+  if (name.startsWith('paper.') || name.startsWith('moki.')) return `🎨 ${name}`;
   if (name === 'save_definition') return `save_definition (${args.chars ?? '?'} caracteres)`;
   if (name === 'review_definition') return `review_definition (${args.chars ?? '?'} caracteres)`;
   if (name === 'save_doc') return `save_doc → ${args.path ?? '?'}`;

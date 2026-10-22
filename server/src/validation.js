@@ -67,15 +67,16 @@ export function validateDocument(content) {
 export const DESIGN_PLATFORMS = ['ios', 'android', 'web-desktop', 'web-responsive', 'app', 'web'];
 
 /**
- * Valida el manifiesto de diseño: qué artboards de Paper cubren qué
- * casuísticas de la definición. La revisión con capturas viene después.
+ * Valida el manifiesto de diseño: qué artboards de la herramienta de diseño
+ * (Paper o Moki) cubren qué casuísticas de la definición. La revisión con
+ * capturas viene después.
  */
 export function validateDesign(manifest, definition = '') {
   const errors = [];
   const warnings = [];
   if (!manifest || typeof manifest !== 'object') return result(['El manifiesto de diseño está vacío.']);
-  if (!String(manifest.fileId || '').trim()) errors.push('Falta fileId (fichero de Paper).');
-  if (!String(manifest.pageId || '').trim()) errors.push('Falta pageId (página de la card en Paper).');
+  if (!String(manifest.fileId || '').trim()) errors.push('Falta fileId (fichero de diseño).');
+  if (!String(manifest.pageId || '').trim()) errors.push('Falta pageId (página de la card en la herramienta de diseño).');
   const artboards = Array.isArray(manifest.artboards) ? manifest.artboards : [];
   if (!artboards.length) errors.push('El manifiesto no incluye ningún artboard.');
   artboards.forEach((artboard, index) => {

@@ -60,18 +60,24 @@ data/cli/       ← CLIs instalados (no se incluye en la copia de seguridad del 
 
 > ⚠ **Condiciones de uso.** OpenAI permite usar la suscripción de ChatGPT con el CLI oficial de Codex. Anthropic solo permite usar la suscripción Pro/Max a través de Claude Code y para uso personal; aquí siempre se invoca el binario oficial, pero revisa sus condiciones vigentes antes de depender de ello. Los límites de uso de la suscripción (ventanas de 5 h y cupo semanal) se aplican también a las revisiones.
 
-## Diseño con Paper
+## Diseño con Paper o Moki
 
-Además de definir, cada card puede tener su **diseño en Paper** (fichero *Gotty · Product Design*), coexistiendo con la definición:
+Además de definir, cada card puede tener su **diseño** en el fichero *Gotty · Product Design*, coexistiendo con la definición. Hay dos herramientas **alternativas** con el mismo fichero y la misma organización: **Paper** (app de escritorio, a través de un puente en el Mac) y **Moki** (servidor de diseño propio, siempre encendido en la red local). Ambas se conectan por MCP y se configuran en la pestaña **IA**, donde eliges también la herramienta **por defecto**. Al lanzar el diseño de una card puedes elegir la otra; una vez la card tiene diseño, queda ligada a su herramienta (comentarios, promoción y enlaces van siempre a la misma).
 
-1. **Definir** (pestaña Agente): si Paper está disponible y el proveedor es Codex o Claude, el agente de definición **consulta** los diseños existentes (solo lectura) para que la definición encaje con la UI real.
-2. **Diseñar** (pestaña **Diseño**): un agente de diseño pinta en Paper cada casuística de la definición en una página propia de la card (`30 · Card · <título>`), siguiendo `os/agent-design.md` y `os/design-guide.md`: app en iOS (y Android donde el patrón nativo difiere) y web en parejas desktop + responsive. Una **revisión de diseño obligatoria** (capturas de los artboards contra la definición y el sistema de diseño) debe aprobar el resultado antes de guardarlo. Se guarda un **manifiesto**: qué artboards cubren qué casuística.
-3. **Iterar**: por chat con el agente, o comentando directamente en Paper y pulsando **💬 Aplicar comentarios de Paper** (el agente lee los hilos abiertos, corrige y los marca como resueltos).
+1. **Definir** (pestaña Agente): si la herramienta por defecto (o la del diseño de la card) está disponible y el proveedor es Codex o Claude, el agente de definición **consulta** los diseños existentes (solo lectura) para que la definición encaje con la UI real.
+2. **Diseñar** (pestaña **Diseño**): un agente de diseño pinta cada casuística de la definición en una página propia de la card (`30 · Card · <título>`), siguiendo `os/agent-design.md` y `os/design-guide.md`: app en iOS (y Android donde el patrón nativo difiere) y web en parejas desktop + responsive. Una **revisión de diseño obligatoria** (capturas de los artboards contra la definición y el sistema de diseño) debe aprobar el resultado antes de guardarlo. Se guarda un **manifiesto**: qué artboards cubren qué casuística, y en qué herramienta.
+3. **Iterar**: por chat con el agente, o comentando directamente en la herramienta de diseño y pulsando **💬 Aplicar comentarios** (el agente lee los hilos abiertos, corrige y los marca como resueltos).
 4. **Coherencia**: si la definición cambia después de diseñar, el diseño queda marcado **⚠ desactualizado** (en la card y en el prompt) hasta que se rediseñe. Si el agente de diseño descubre un hueco, actualiza la definición pasando por `review_definition`.
-5. **Copiar como prompt** añade la sección *Diseño (Paper)* con el enlace a la página, los ids de los artboards y cómo usarlos por MCP (`{{designs}}` en `os/feature-prompt.md`).
-6. **Promocionar** (al documentar, en Done Dev): el agente mueve los artboards aprobados a la página de su feature (`10–14` app, `20–25` web) y **borra** los artboards que sustituyen: Paper refleja solo el producto actual. Como Paper no permite borrar páginas por MCP, la página de la card queda vacía y renombrada (`· promocionada, borrar`) para que la borres a mano. El agente de documentación enlaza la página de Paper en el documento del flujo.
+5. **Copiar como prompt** añade la sección *Diseño (Paper)* o *Diseño (Moki)* con el enlace a la página, los ids de los artboards y cómo usarlos por MCP (`{{designs}}` en `os/feature-prompt.md`).
+6. **Promocionar** (al documentar, en Done Dev): el agente mueve los artboards aprobados a la página de su feature (`10–14` app, `20–25` web) y **borra** los artboards que sustituyen: el fichero refleja solo el producto actual. Ni Paper ni Moki permiten borrar páginas por MCP, así que la página de la card queda vacía y renombrada (`· promocionada, borrar`) para que la borres a mano. El agente de documentación enlaza la página en el documento del flujo.
 
-El diseño solo se puede hacer con **Codex o Claude** (OpenRouter no puede usar Paper).
+El diseño solo se puede hacer con **Codex o Claude** (OpenRouter no puede usar herramientas MCP externas). Lo que cambia entre herramientas (infraestructura, cómo reutilizar masters, herramientas permitidas) vive en `server/src/paper.js`, `server/src/moki.js` y la sección de herramienta que añade `server/src/prompt.js`; las reglas de `os/` son comunes.
+
+### Moki: sin puente
+
+Moki expone su MCP por HTTP con token (`Authorization: Bearer`), así que el Product OS habla con él directamente: no hay nada que levantar. En la pestaña **IA** → **Moki (diseño)** pega la URL `http://<ip-del-servidor-de-moki>:7410/mcp` (usa la IP: desde el contenedor los nombres de la red local pueden no resolverse), el token de Moki (`MOKI_TOKEN`, en el Llavero del Mac que lo despliega) y elige el fichero *Gotty · Product Design*. El estado comprueba que el servidor responde, que el token es válido y que el fichero sigue existiendo.
+
+Moki permite al agente de diseño, además de lo mismo que Paper, colocar **instancias** de los componentes existentes (`create_instance`, overrides); no puede crear componentes nuevos, ficheros, exportar ni tocar tokens.
 
 ### ⚠ El puente de Paper debe estar encendido
 
@@ -199,6 +205,7 @@ Exporta tus páginas de Notion como markdown y déjalas en `workspace/docs/` (ke
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token de `claude setup-token` (opcional; alternativa a pegarlo en la pestaña IA) |
 | `CLI_AUTO_UPDATE` | `false` desactiva la actualización diaria automática de los CLIs de Codex y Claude |
 | `PAPER_BRIDGE_URL` / `PAPER_BRIDGE_TOKEN` / `PAPER_FILE_ID` | Puente de Paper (opcional; lo normal es configurarlo en la pestaña IA) |
+| `MOKI_URL` / `MOKI_TOKEN` / `MOKI_FILE_ID` | Servidor de Moki (opcional; lo normal es configurarlo en la pestaña IA) |
 | `PORT` | Puerto del servidor (4400) |
 | `PRODUCT_OS_IMAGE` | Etiqueta de la imagen Docker que ejecutará Compose |
 | `PRODUCT_OS_DATA_DIR` | Ruta del host donde persiste la SQLite; en la Raspberry: `/home/0xEsp/justgame-product-os/data` |

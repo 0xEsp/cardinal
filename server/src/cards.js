@@ -1,14 +1,11 @@
 import crypto from 'node:crypto';
 import { db } from './db.js';
+import { designToolOf, getDesignTool } from './design-tools.js';
 
 // Huella de la definición con la que se aprobó un diseño: si la definición
 // cambia después, el diseño queda "desactualizado".
 export function definitionHash(definition) {
   return crypto.createHash('sha256').update(String(definition || '')).digest('hex').slice(0, 16);
-}
-
-export function paperPageUrl(fileId, pageId) {
-  return `https://app.paper.design/file/${encodeURIComponent(fileId)}/${encodeURIComponent(pageId)}`;
 }
 
 function parseDesign(raw, definition) {
@@ -19,6 +16,7 @@ function parseDesign(raw, definition) {
   } catch {
     return { design: null, designStatus: 'none' };
   }
+  design.tool = designToolOf(design);
   const stale = design.definitionHash !== definitionHash(definition);
   const designStatus = stale ? 'stale' : design.promotedAt ? 'promoted' : 'ready';
   return { design, designStatus };
@@ -217,24 +215,26 @@ export function markDocumented(id) {
 }
 
 /**
- * Guarda el manifiesto del diseño: qué artboards de Paper cubren qué
- * casuísticas, ligado a la versión actual de la definición.
+ * Guarda el manifiesto del diseño: qué artboards de la herramienta de diseño
+ * (Paper o Moki) cubren qué casuísticas, ligado a la versión actual de la definición.
  */
-export function saveDesign(id, manifest, { promoted = false } = {}) {
+export function saveDesign(id, manifest, { promoted = false, tool: toolId } = {}) {
   const card = getCard(id);
+  const tool = getDesignTool(toolId);
   const now = new Date().toISOString();
   const design = {
+    tool: tool.id,
     fileId: manifest.fileId,
     fileName: manifest.fileName || '',
     pageId: manifest.pageId,
     pageName: manifest.pageName || '',
-    pageUrl: paperPageUrl(manifest.fileId, manifest.pageId),
+    pageUrl: tool.pageUrl(manifest.fileId, manifest.pageId),
     artboards: manifest.artboards.map((artboard) => ({
       id: String(artboard.id),
       name: String(artboard.name || ''),
       platform: artboard.platform || '',
       covers: (artboard.covers || []).map(String),
-      ...(artboard.pageId ? { pageId: artboard.pageId, pageUrl: paperPageUrl(manifest.fileId, artboard.pageId) } : {}),
+      ...(artboard.pageId ? { pageId: artboard.pageId, pageUrl: tool.pageUrl(manifest.fileId, artboard.pageId) } : {}),
     })),
     notes: String(manifest.notes || ''),
     definitionHash: definitionHash(card.definition),

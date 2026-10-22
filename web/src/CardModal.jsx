@@ -156,7 +156,7 @@ export default function CardModal({ card, config, onClose, onChanged, showToast 
             />
             {card.design && (
               <details className="design-promote" open={card.designStatus === 'ready'}>
-                <summary>Diseño en Paper · {card.designStatus === 'promoted' ? 'promocionado' : card.designStatus === 'stale' ? 'desactualizado' : 'pendiente de promocionar'}</summary>
+                <summary>Diseño en {config.designTools?.tools?.[card.design.tool]?.label || card.design.tool} · {card.designStatus === 'promoted' ? 'promocionado' : card.designStatus === 'stale' ? 'desactualizado' : 'pendiente de promocionar'}</summary>
                 <DesignPanel card={card} config={config} onChanged={onChanged} showToast={showToast} promote />
               </details>
             )}

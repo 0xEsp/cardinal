@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OS_DIR } from './paths.js';
 import { listDocs } from './docs.js';
+import { getDesignTool } from './design-tools.js';
 
 function osFile(name) {
   const file = path.join(OS_DIR, name);
@@ -30,8 +31,9 @@ const PLATFORM_LABEL = {
 export function formatDesign(card, { forBuilder = false } = {}) {
   const design = card.design;
   if (!design) return '';
+  const label = getDesignTool(design.tool).label;
   const lines = [
-    '## Diseño (Paper)',
+    `## Diseño (${label})`,
     '',
     `- Fichero: ${design.fileName || 'Diseño de Gotty'} (\`fileId: ${design.fileId}\`)`,
     `- Página: [${design.pageName || design.pageId}](${design.pageUrl}) (\`pageId: ${design.pageId}\`)`,
@@ -49,7 +51,7 @@ export function formatDesign(card, { forBuilder = false } = {}) {
   if (forBuilder) {
     lines.push(
       '',
-      'Conéctate al MCP de Paper y trabaja sobre estos artboards (`fileId` y los `id` de la tabla):',
+      `Conéctate al MCP de ${label} (\`${design.tool}\`) y trabaja sobre estos artboards (\`fileId\` y los \`id\` de la tabla):`,
       '- Obtén estructura y valores exactos con `get_jsx` y `get_computed_styles`; mapea cada valor a los tokens y componentes del proyecto, nunca a valores hardcodeados.',
       '- Usa `get_screenshot` solo para verificar visualmente tu implementación, no como fuente de medidas.',
       '- Si el diseño y la definición discrepan en comportamiento, manda la definición.',
@@ -58,28 +60,49 @@ export function formatDesign(card, { forBuilder = false } = {}) {
   return lines.join('\n');
 }
 
-function paperSection(paper, access) {
-  if (!paper) return '';
+// Lo que cambia entre herramientas de diseño; las reglas de os/ son comunes.
+const DESIGN_TOOL_NOTES = {
+  paper: [
+    '- Infraestructura: Paper solo es accesible a través del puente que corre en el Mac de Manu con la app de Paper abierta. Si las herramientas `paper` fallan por conexión, detente y explica que hay que levantar el puente (`node scripts/paper-bridge/paper-bridge.mjs`) y abrir Paper.',
+    '- Reutilización: clona masters y patrones con `<x-paper-clone node-id="…">` dentro de `write_html`. Paper no vincula los clones como instancias: nunca modifiques un master para adaptar un caso concreto.',
+    '- Paper no permite borrar páginas por MCP.',
+  ],
+  moki: [
+    '- Infraestructura: Moki es un servidor siempre encendido en la red local (Mac mini). Si las herramientas `moki` fallan por conexión o por token, detente y explícalo: no hay nada que levantar a mano.',
+    '- Lee una vez su guía de uso con `get_guide({ topic: "moki-mcp-instructions" })` antes de pintar, salvo la parte de brief y paleta: el sistema de diseño de Gotty ya está decidido.',
+    '- Reutilización: si `list_components` devuelve el componente que necesitas, colócalo como instancia (`create_instance` o `<x-moki-instance component-id="…">`) y personalízalo con overrides. Si no existe, clona el master con `<x-moki-clone node-id="…">`. No crees componentes nuevos ni edites un componente principal para adaptar un caso concreto: anótalo en `notes`.',
+    '- Moki no permite borrar páginas por MCP.',
+  ],
+};
+
+function designToolSection(design, access) {
+  if (!design) return '';
+  const tool = getDesignTool(design.tool);
   const intro = access === 'write'
-    ? 'Tienes acceso de lectura y escritura a Paper mediante las herramientas MCP `paper`.'
-    : 'Tienes acceso de solo lectura a Paper mediante las herramientas MCP `paper`.';
+    ? `Tienes acceso de lectura y escritura a ${tool.label} mediante las herramientas MCP \`${tool.id}\`.`
+    : `Tienes acceso de solo lectura a ${tool.label} mediante las herramientas MCP \`${tool.id}\`.`;
   return [
-    '# Paper (diseño)',
+    `# Herramienta de diseño: ${tool.label}`,
     '',
     intro,
-    `- Fichero de diseño de Gotty: ${paper.fileName || '(sin nombre)'} — \`fileId: ${paper.fileId}\`. Pasa siempre este fileId a las herramientas que lo acepten.`,
-    '- Paper es la única fuente de diseño y refleja el producto actual. Las páginas van por feature: `10–14` app (Access, Discover, Game, Library, Account) y `20–25` web (las mismas features + Public); `02 · Components` y `03 · Patterns` tienen los masters y patrones de cada plataforma.',
+    `- Fichero de diseño de Gotty: ${design.fileName || '(sin nombre)'} — \`fileId: ${design.fileId}\`. Pasa siempre este fileId a las herramientas que lo acepten.`,
+    `- ${tool.label} es la fuente de diseño de esta card y refleja el producto actual. Las páginas van por feature: \`10–14\` app (Access, Discover, Game, Library, Account) y \`20–25\` web (las mismas features + Public); \`02 · Components\` y \`03 · Patterns\` tienen los masters y patrones de cada plataforma.`,
     '- Empieza con `get_basic_info` para ver páginas, artboards y tokens; usa `find_nodes`, `get_tree_summary` y `get_screenshot` para entender los flujos existentes.',
+    ...(access === 'write' ? DESIGN_TOOL_NOTES[tool.id] : []),
   ].join('\n');
 }
 
-export function buildSystemPrompt(mode, card, { paper = null, task = 'design' } = {}) {
+/**
+ * design: { tool, fileId, fileName } de la herramienta que usa el agente, o null
+ * si no tiene acceso a diseños.
+ */
+export function buildSystemPrompt(mode, card, { design = null, task = 'design' } = {}) {
   const sections = [];
 
   if (mode === 'design') {
     sections.push(osFile('agent-design.md'));
     sections.push('# Referencia: design-guide.md\n\n' + osFile('design-guide.md'));
-    sections.push(paperSection(paper, 'write'));
+    sections.push(designToolSection(design, 'write'));
     sections.push(`# Tarea de este agente: ${task}`);
   } else if (mode === 'define') {
     sections.push(osFile('agent-define.md'));
@@ -90,8 +113,8 @@ export function buildSystemPrompt(mode, card, { paper = null, task = 'design' } 
       const qa = osFile(`qa-criteria-${s}.md`);
       if (qa) sections.push(`# Referencia: qa-criteria-${s}.md\n\n` + qa);
     }
-    if (paper) {
-      sections.push(`${paperSection(paper, 'read')}\n- Consulta los diseños de los flujos que toca la card para que la definición sea coherente con la UI real (pantallas, estados y componentes existentes). No puedes modificar Paper desde este agente.`);
+    if (design) {
+      sections.push(`${designToolSection(design, 'read')}\n- Consulta los diseños de los flujos que toca la card para que la definición sea coherente con la UI real (pantallas, estados y componentes existentes). No puedes modificar ${getDesignTool(design.tool).label} desde este agente.`);
     }
   } else {
     sections.push(osFile('agent-document.md'));
@@ -119,7 +142,7 @@ export function buildSystemPrompt(mode, card, { paper = null, task = 'design' } 
   } else {
     sections.push(
       `# Card desarrollada (a documentar)\n\nTítulo: ${card.title}\nPropiedades: ${props}\nFecha de documentación: ${new Date().toISOString().slice(0, 10)}\n\n## Definición IA +\n\n${card.definition || '(sin definición)'}` +
-        (card.design ? `\n\n${formatDesign(card)}\n\nEnlaza la página de Paper en la documentación del flujo afectado.` : '')
+        (card.design ? `\n\n${formatDesign(card)}\n\nEnlaza la página de ${getDesignTool(card.design.tool).label} en la documentación del flujo afectado.` : '')
     );
   }
 
@@ -133,7 +156,7 @@ export function formatStacks(card) {
 
 // Prompt listo para pegar en el feature-builder del proyecto de destino.
 // Plantilla editable en os/feature-prompt.md con {{title}}, {{stacks}},
-// {{definition}} y {{designs}} (enlaces e ids de Paper; vacío si no hay diseño).
+// {{definition}} y {{designs}} (enlaces e ids de Paper o Moki; vacío si no hay diseño).
 export function buildFeaturePrompt(card) {
   if (!card.definition) throw Object.assign(new Error('La card aún no tiene definición generada'), { status: 400 });
   const template =
@@ -216,18 +239,18 @@ export function toolsForMode(mode) {
   if (mode === 'design') {
     const manifestSchema = {
       type: 'object',
-      description: 'Manifiesto del diseño: qué artboards de Paper cubren qué casuísticas de la definición.',
+      description: 'Manifiesto del diseño: qué artboards de la herramienta de diseño cubren qué casuísticas de la definición.',
       properties: {
-        fileId: { type: 'string', description: 'Id del fichero de Paper' },
+        fileId: { type: 'string', description: 'Id del fichero de diseño' },
         fileName: { type: 'string' },
-        pageId: { type: 'string', description: 'Id de la página de Paper de la card (o la canónica tras promocionar)' },
+        pageId: { type: 'string', description: 'Id de la página de la card en la herramienta de diseño (o la canónica tras promocionar)' },
         pageName: { type: 'string' },
         artboards: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string', description: 'Id del artboard en Paper' },
+              id: { type: 'string', description: 'Id del artboard en la herramienta de diseño' },
               name: { type: 'string', description: 'Nombre del artboard según design-guide.md (Native <feature> / <estado> / <iOS|Android> o Web desktop|Web responsive / <flujo> / <estado>)' },
               platform: { type: 'string', enum: ['ios', 'android', 'web-desktop', 'web-responsive'] },
               covers: { type: 'array', items: { type: 'string' }, description: 'Casuísticas o comportamientos de la definición que representa' },
@@ -251,7 +274,7 @@ export function toolsForMode(mode) {
         function: {
           name: 'review_design',
           description:
-            'Revisión independiente del diseño: valida el manifiesto y un revisor inspecciona los artboards en Paper (capturas) contra la definición y la guía de diseño. Obligatoria antes de save_design; no guarda nada.',
+            'Revisión independiente del diseño: valida el manifiesto y un revisor inspecciona los artboards en la herramienta de diseño (capturas) contra la definición y la guía de diseño. Obligatoria antes de save_design; no guarda nada.',
           parameters: { type: 'object', properties: { manifest: manifestSchema }, required: ['manifest'] },
         },
       },

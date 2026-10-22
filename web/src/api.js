@@ -26,12 +26,15 @@ export const api = {
   docContent: (path) => req(`/api/docs/content?path=${encodeURIComponent(path)}`),
   saveDoc: (path, content) => req('/api/docs/content', json('PUT', { path, content })),
   agentRuns: (cardId) => req(`/api/cards/${cardId}/agent-runs`),
-  // slot: 'main' (definición/documentación) o 'design' (Paper, con task design|comments|promote)
-  startAgent: (cardId, { slot = 'main', task, provider, model, effort }) => req(`/api/agent/${cardId}/start`, json('POST', { slot, task, provider, model, effort })),
-  paper: () => req('/api/paper'),
-  savePaper: (patch) => req('/api/paper', json('PUT', patch)),
-  deletePaperToken: () => req('/api/paper/token', { method: 'DELETE' }),
-  paperFiles: () => req('/api/paper/files'),
+  // slot: 'main' (definición/documentación) o 'design' (Paper o Moki, con task design|comments|promote
+  // y designTool paper|moki, que solo cuenta si la card aún no tiene diseño)
+  startAgent: (cardId, { slot = 'main', task, designTool, provider, model, effort }) => req(`/api/agent/${cardId}/start`, json('POST', { slot, task, designTool, provider, model, effort })),
+  // Herramientas de diseño: tool = 'paper' | 'moki' (mismas rutas para las dos).
+  designTool: (tool) => req(`/api/${tool}`),
+  saveDesignTool: (tool, patch) => req(`/api/${tool}`, json('PUT', patch)),
+  deleteDesignToolToken: (tool) => req(`/api/${tool}/token`, { method: 'DELETE' }),
+  designToolFiles: (tool) => req(`/api/${tool}/files`),
+  saveDefaultDesignTool: (tool) => req('/api/design-tools/default', json('PUT', { tool })),
   providers: () => req('/api/providers'),
   providerModels: (id, refresh = false) => req(`/api/providers/${id}/models${refresh ? '?refresh=1' : ''}`),
   saveProviderDefaults: (defaults) => req('/api/providers/defaults', json('PUT', defaults)),

@@ -83,7 +83,7 @@ if (!cardColumns.has('documentation_status')) {
   db.exec("ALTER TABLE cards ADD COLUMN documentation_status TEXT NOT NULL DEFAULT 'pending'");
 }
 if (!cardColumns.has('documented_at')) db.exec('ALTER TABLE cards ADD COLUMN documented_at TEXT');
-// Manifiesto del diseño en Paper (JSON); vacío si la card no tiene diseño.
+// Manifiesto del diseño en Paper o Moki (JSON, con `tool`); vacío si la card no tiene diseño.
 if (!cardColumns.has('design')) db.exec("ALTER TABLE cards ADD COLUMN design TEXT NOT NULL DEFAULT ''");
 
 if (addedPosition) {
