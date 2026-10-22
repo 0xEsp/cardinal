@@ -77,7 +77,7 @@ El diseño solo se puede hacer con **Codex o Claude** (OpenRouter no puede usar 
 
 Moki expone su MCP por HTTP con token (`Authorization: Bearer`), así que el Product OS habla con él directamente: no hay nada que levantar. En la pestaña **IA** → **Moki (diseño)** pega la URL `http://<ip-del-servidor-de-moki>:7410/mcp` (usa la IP: desde el contenedor los nombres de la red local pueden no resolverse), el token de Moki (`MOKI_TOKEN`, en el Llavero del Mac que lo despliega) y elige el fichero *Gotty · Product Design*. El estado comprueba que el servidor responde, que el token es válido y que el fichero sigue existiendo.
 
-Moki permite al agente de diseño, además de lo mismo que Paper, colocar **instancias** de los componentes existentes (`create_instance`, overrides); no puede crear componentes nuevos, ficheros, exportar ni tocar tokens.
+Moki permite al agente de diseño, además de lo mismo que Paper, diseñar **siempre con instancias** de los componentes existentes (`create_instance`, overrides). Si falta un componente, lo crea como borrador en la página de la card (`create_component`, `convert_to_instances`) y al promocionar pasa a `02 · Components`. No puede desvincular instancias, crear ficheros, exportar ni tocar tokens.
 
 ### ⚠ El puente de Paper debe estar encendido
 

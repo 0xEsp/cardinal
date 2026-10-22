@@ -16,13 +16,16 @@ export const MOKI_READ_TOOLS = [
   'list_comment_thread_authors', 'list_components',
 ];
 
-// Escritura para el agente de diseño. Puede usar instancias de los componentes
-// existentes, pero no crear componentes nuevos (los masters del sistema de
-// diseño, igual que los tokens, los decide Manu); tampoco ficheros ni exportar.
+// Escritura para el agente de diseño. Diseña siempre con instancias: usa los
+// componentes existentes y, si falta uno, lo crea como borrador en la página de
+// la card (create_component, convert_to_instances), que pasa a 02 · Components al
+// promocionar. Sin detach_instance (deshacer una instancia crea una copia suelta),
+// ni tokens, ficheros o exportar: eso lo decide Manu.
 export const MOKI_WRITE_TOOLS = [
   'create_page', 'update_pages', 'create_artboard', 'write_html', 'set_text_content', 'rename_nodes',
   'update_styles', 'duplicate_nodes', 'move_nodes', 'delete_nodes', 'finish_working_on_nodes',
-  'set_comment_thread_status', 'create_instance', 'detach_instance', 'reset_overrides',
+  'set_comment_thread_status', 'create_instance', 'reset_overrides', 'create_component',
+  'convert_to_instances',
 ];
 
 export function mokiConfig() {

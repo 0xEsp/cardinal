@@ -20,6 +20,6 @@ Repositorio de Moki: `~/Documents/Personal/Moki` (despliegue en su `AGENTS.md` �
 ## Reglas
 
 - No muestres el token en mensajes salvo que el usuario lo pida para pegarlo.
-- Los permisos por agente los decide el Product OS (`server/src/moki.js`): lectura para definir y revisar; escritura para diseñar con instancias de componentes existentes, pero sin crear componentes, ficheros, exportar ni tocar tokens.
-- Lo que diferencia a Moki en los prompts (guía `moki-mcp-instructions`, `<x-moki-clone>`, instancias) está en `server/src/prompt.js` (`DESIGN_TOOL_NOTES`); las reglas comunes de diseño, en `os/agent-design.md` y `os/design-guide.md`.
+- Los permisos por agente los decide el Product OS (`server/src/moki.js`): lectura para definir y revisar; escritura para diseñar siempre con instancias de componentes (y crear componentes nuevos solo como borrador en la página de la card), sin desvincular instancias, crear ficheros, exportar ni tocar tokens.
+- Lo que diferencia a Moki en los prompts (guía `moki-mcp-instructions`, instancias obligatorias, componentes nuevos en la página de la card) está en `server/src/prompt.js` (`DESIGN_TOOL_NOTES`); las reglas comunes de diseño, en `os/agent-design.md` y `os/design-guide.md`.
 - Una card con diseño en Paper no se puede pasar a Moki (ni al revés): habría que borrar su diseño y rediseñarla.
