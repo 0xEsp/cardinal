@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-// Rutas con hash (#/p/gotty/board): funcionan servidas desde cualquier ruta y
+// Rutas con hash (#/p/mi-proyecto/board): funcionan servidas desde cualquier ruta y
 // el botón atrás del navegador (y del móvil) vuelve a la pantalla anterior.
 //   #/p/:project/board · /card/:id · /docs · /rules · /runs · /settings
 //   #/mcp · #/ai · #/new-project

@@ -7,12 +7,12 @@ description: Comprueba o reconfigura la conexión de Cardinal con Moki, la herra
 
 Moki es una herramienta de diseño propia, **alternativa a Paper** (no la sustituye): cada card se diseña en una de las dos y queda ligada a ella. Corre como contenedor Docker (OrbStack) en el **Mac mini** `0xesp@manus-mac-mini` (`192.168.50.70`), siempre encendido, y expone su MCP por HTTP en `http://192.168.50.70:7410/mcp` con token (`Authorization: Bearer`). Cardinal, en la Raspberry (`192.168.50.108:4400`), habla con él **directamente**: no hay puente que levantar.
 
-Repositorio de Moki: `~/Documents/Personal/Moki` (despliegue en su `AGENTS.md` §9: `bash scripts/deploy/deploy.sh`). Repositorio de Cardinal: `/Users/manuespeso/Documents/Trabajo/Gotty/gotty-product-os`.
+Repositorio de Moki: `~/Documents/Personal/Moki` (despliegue en su `AGENTS.md` §9: `bash scripts/deploy/deploy.sh`). Repositorio de Cardinal: `/Users/manuespeso/Documents/Personal/cardinal`.
 
 ## Diagnóstico
 
 1. ¿Responde el servidor? `curl -s -o /dev/null -w "%{http_code}" http://192.168.50.70:7410/api/health` debe dar `200` (no exige token). Si no responde: `ssh 0xesp@manus-mac-mini 'docker ps --filter name=moki'` y `docker logs moki --tail 30`.
-2. En Cardinal → **IA y diseño** → **Moki (diseño)**: URL `http://192.168.50.70:7410/mcp` (la IP, no `manus-mac-mini`: desde el contenedor los nombres de la red local pueden no resolverse) y token. "↻ Comprobar" valida servidor y token (con una llamada MCP real). El **fichero de diseño es de cada proyecto**: se elige en **Ajustes del proyecto → Diseño** (Gotty usa *Gotty · Product Design*).
+2. En Cardinal → **IA y diseño** → **Moki (diseño)**: URL `http://192.168.50.70:7410/mcp` (la IP, no `manus-mac-mini`: desde el contenedor los nombres de la red local pueden no resolverse) y token. "↻ Comprobar" valida servidor y token (con una llamada MCP real). El **fichero de diseño es de cada proyecto**: se elige en **Ajustes del proyecto → Diseño**.
 3. "Moki rechaza el token": el token de Moki cambió (p. ej. `setup-secrets.sh --rotate` en el repo de Moki). El valor vigente está en el Llavero del Mac: `security find-generic-password -s moki -a 0xesp@manus-mac-mini -w | pbcopy`, y se pega en IA y diseño.
 4. "El fichero elegido ya no existe" o "Elige el fichero de diseño del proyecto": elige fichero en Ajustes del proyecto → Diseño.
 5. Si Moki va lento o el agente falla con timeouts en ficheros muy grandes, revisa memoria: `ssh 0xesp@manus-mac-mini 'docker stats moki --no-stream'`. El límite está en `MOKI_MEM_LIMIT` del `deploy.local.env` de Moki.

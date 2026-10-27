@@ -12,7 +12,7 @@
 //   node scripts/paper-bridge/paper-bridge.mjs status        # ¿está levantado? ¿Paper está abierto?
 //   node scripts/paper-bridge/paper-bridge.mjs token         # URL y token para la pestaña IA
 //   node scripts/paper-bridge/paper-bridge.mjs rotate-token  # genera un token nuevo
-// El token se guarda en ~/.config/gotty-paper-bridge/token y se reutiliza en
+// El token se guarda en ~/.config/cardinal-paper-bridge/token y se reutiliza en
 // cada arranque, así la configuración del Product OS sigue valiendo.
 // Sin dependencias: solo Node 18+.
 
@@ -24,7 +24,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 
-const CONFIG_DIR = path.join(os.homedir(), '.config', 'gotty-paper-bridge');
+const CONFIG_DIR = path.join(os.homedir(), '.config', 'cardinal-paper-bridge');
+// Antes de Cardinal el token vivía en otra carpeta: se mueve una vez para no
+// tener que volver a pegarlo en IA y diseño.
+const LEGACY_CONFIG_DIR = path.join(os.homedir(), '.config', 'gotty-paper-bridge');
+if (!fs.existsSync(CONFIG_DIR) && fs.existsSync(LEGACY_CONFIG_DIR)) fs.renameSync(LEGACY_CONFIG_DIR, CONFIG_DIR);
 const PORT = Number(process.env.PAPER_BRIDGE_PORT || 4410);
 const HOST = process.env.PAPER_BRIDGE_HOST || '0.0.0.0';
 const PAPER_BIN = process.env.PAPER_BIN || path.join(os.homedir(), '.paper', 'bin', 'paper');

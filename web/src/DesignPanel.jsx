@@ -87,7 +87,7 @@ export default function DesignPanel({ card, tools, tool: chosen, setTool, promot
           {design.notes && <p className="muted">Notas: {design.notes}</p>}
           {card.designStatus === 'promoted' && (
             <p className="notice">
-              {tool.label} no permite borrar páginas por MCP: borra a mano la página vacía <code>30 · Card · {card.title} · promocionada, borrar</code>.
+              {tool.label} no permite borrar páginas por MCP: borra a mano la página vacía de la card (renombrada con «promocionada, borrar»).
             </p>
           )}
         </>

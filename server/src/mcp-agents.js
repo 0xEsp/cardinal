@@ -64,7 +64,7 @@ function authenticate(req) {
 // ---- herramientas ----
 
 const str = (description) => ({ type: 'string', description });
-const PROJECT = str('Id del proyecto (ver list_projects), p. ej. "gotty"');
+const PROJECT = str('Id del proyecto (ver list_projects), p. ej. "mi-proyecto"');
 const CARD = str('Id de la card (ver list_cards)');
 
 // write: requiere token de escritura. Cada handler recibe (args, ctx) y

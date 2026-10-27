@@ -18,8 +18,8 @@ export const MOKI_READ_TOOLS = [
 
 // Escritura para el agente de diseño. Diseña siempre con instancias: usa los
 // componentes existentes y, si falta uno, lo crea como borrador en la página de
-// la card (create_component, convert_to_instances), que pasa a 02 · Components al
-// promocionar. Sin detach_instance (deshacer una instancia crea una copia suelta),
+// la card (create_component, convert_to_instances), que pasa a la página de
+// componentes al promocionar. Sin detach_instance (deshacer una instancia crea una copia suelta),
 // ni tokens, ficheros o exportar: eso lo decide Manu.
 export const MOKI_WRITE_TOOLS = [
   'create_page', 'update_pages', 'create_artboard', 'write_html', 'set_text_content', 'rename_nodes',

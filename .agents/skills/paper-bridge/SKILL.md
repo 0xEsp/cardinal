@@ -11,7 +11,7 @@ El puente **no es un servicio**: es un proceso de Node en primer plano que el us
 - El agente de **diseño** no puede lanzarse (error "Paper no está disponible").
 - El agente de **definición** sigue funcionando, pero sin consultar diseños.
 
-Repositorio: `/Users/manuespeso/Documents/Trabajo/Gotty/gotty-product-os`. Ejecuta los comandos desde ahí y en el Mac (no en la Raspberry).
+Repositorio: `/Users/manuespeso/Documents/Personal/cardinal`. Ejecuta los comandos desde ahí y en el Mac (no en la Raspberry).
 
 ## Comandos
 
@@ -26,11 +26,11 @@ Repositorio: `/Users/manuespeso/Documents/Trabajo/Gotty/gotty-product-os`. Ejecu
 1. `… status`. Si no está levantado, ofrece levantarlo (no lo dejes corriendo sin que el usuario lo sepa).
 2. Si Paper aparece cerrado: pide al usuario que abra la app de Paper (no la abras sin preguntar).
 3. Si dice que el puerto está en uso al levantarlo, ya hay un puente corriendo en otra terminal.
-4. En Cardinal → **IA y diseño** → **Paper (diseño)**: la URL debe ser `http://<ip-del-mac>:4410/mcp` y el token el de `… token`. El fichero de diseño se elige en **Ajustes del proyecto → Diseño** (Gotty: *Gotty · Product Design*). "↻ Comprobar" refresca el estado.
+4. En Cardinal → **IA y diseño** → **Paper (diseño)**: la URL debe ser `http://<ip-del-mac>:4410/mcp` y el token el de `… token`. El fichero de diseño se elige en **Ajustes del proyecto → Diseño**. "↻ Comprobar" refresca el estado.
 
 ## Reglas
 
-- No muestres el token en mensajes salvo que el usuario lo pida para pegarlo; vive en `~/.config/gotty-paper-bridge/token` (0600) y se reutiliza en cada arranque.
+- No muestres el token en mensajes salvo que el usuario lo pida para pegarlo; vive en `~/.config/cardinal-paper-bridge/token` (0600) y se reutiliza en cada arranque.
 - Si la IP del Mac cambia, hay que actualizar la URL en IA y diseño (recomienda reservar la IP en el router).
 - El puente no da acceso a nada más que a Paper. Los permisos por agente los decide Cardinal (`server/src/paper.js`: lectura para definir/revisar; escritura sin crear ficheros, exportar ni tocar tokens para diseñar).
 - Las reglas de diseño están en `os/agent-design.md` y `os/design-guide.md`.
