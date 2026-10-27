@@ -15,14 +15,10 @@ FROM node:22-alpine
 # modelos nuevos sin construir otra imagen.
 RUN apk add --no-cache git openssh-client libgcc libstdc++ ripgrep
 WORKDIR /app
-# Copia el árbol completo del repo (ver .dockerignore): así el .git montado en
-# runtime ve un working tree coherente y pull/push/status funcionan.
+# Sin workspace/ ni os/ (ver .dockerignore): docs y reglas viven en la SQLite.
 COPY . .
 RUN cd server && npm install --omit=dev
 COPY --from=web-build /build/dist ./web/dist
-# El .git montado pertenece al usuario del host; sin esto git lo rechaza
-RUN git config --global --add safe.directory /app
-RUN git config --global --add safe.directory /repo
 
 EXPOSE 4400
 CMD ["node", "server/src/index.js"]

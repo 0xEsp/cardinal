@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE="0xEsp@192.168.50.108"
 REMOTE_DIR="/home/0xEsp/justgame-product-os"
-IMAGE_TAG="gotty-product-os:raspberry"
-ARCHIVE="$ROOT_DIR/releases/gotty-product-os-$(date +%Y%m%d-%H%M%S).tar.gz"
+IMAGE_TAG="cardinal:raspberry"
+ARCHIVE="$ROOT_DIR/releases/cardinal-$(date +%Y%m%d-%H%M%S).tar.gz"
 
 OUTPUT_FILE="$ARCHIVE" bash "$ROOT_DIR/scripts/build-raspberry-image.sh" "$IMAGE_TAG"
 

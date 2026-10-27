@@ -1,9 +1,9 @@
 ---
 name: deploy-product-os
-description: Construye, transfiere y activa una nueva imagen Docker de Gotty Product OS en la Raspberry conservando la base de datos y el contenido persistente.
+description: Construye, transfiere y activa una nueva imagen Docker de Cardinal (antes Gotty Product OS) en la Raspberry conservando la base de datos y el contenido persistente.
 ---
 
-# Desplegar Product OS en la Raspberry
+# Desplegar Cardinal en la Raspberry
 
 Cuando el usuario pida desplegar cambios de este proyecto, trabaja desde `/Users/manuespeso/Documents/Trabajo/Gotty/gotty-product-os`.
 
@@ -12,7 +12,9 @@ Cuando el usuario pida desplegar cambios de este proyecto, trabaja desde `/Users
 3. SSH o SCP solicitarán la contraseña o el desbloqueo de la clave cuando corresponda. Si no pueden solicitarla, pide al usuario que configure el acceso; no guardes credenciales en archivos, argumentos ni mensajes.
 4. Comprueba mediante SSH `docker compose ps` y los logs recientes del servicio. Si el arranque falla, informa del error y conserva el backup de `releases/` para recuperar los datos.
 
-`load-raspberry-image.sh` comprueba el volumen `/app/data`, detiene el contenedor, hace una copia del directorio de datos (desde un contenedor, porque `secrets/`, `codex/` y `claude/` pertenecen a root; excluye `cli/` y `agent-work/`) y recrea el servicio. No borres ni sustituyas el volumen. La documentación y las reglas se sincronizan por Git mediante Push/Pull, sin nueva imagen.
+`load-raspberry-image.sh` comprueba el volumen `/app/data`, detiene el contenedor, hace una copia del directorio de datos (desde un contenedor, porque `secrets/`, `codex/` y `claude/` pertenecen a root; excluye `cli/` y `agent-work/`), **ensaya las migraciones de la base con la imagen nueva sobre una copia** (`node server/src/migrate-cli.js --dry-run`) y solo si el ensayo pasa cambia de imagen y recrea el servicio. Si el ensayo falla, la imagen anterior sigue activa: informa del error del ensayo tal cual. No borres ni sustituyas el volumen.
+
+Docs y reglas viven en la SQLite (tablas `documents` y `document_versions`), versionadas dentro de Cardinal: ya no se sincronizan por Git. La migración v1 los importó una única vez desde `workspace/docs/` y `os/` del checkout de la Raspberry, que se montan en solo lectura para eso; no los borres hasta confirmar que todo está bien. Antes de cada migración el servidor deja una copia `data/backups/product-os-pre-vN-<fecha>.db`.
 
 ## Paper (diseño)
 

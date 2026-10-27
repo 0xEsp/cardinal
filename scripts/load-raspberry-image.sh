@@ -78,12 +78,24 @@ if [[ -z "$LOADED_IMAGE" ]]; then
   echo "Error: el archivo no contiene una imagen con etiqueta." >&2
   exit 1
 fi
+# Ensayo de la migración con la imagen nueva sobre una copia de la base, antes
+# de tocar la etiqueta de Compose: si falla, la imagen anterior sigue intacta y
+# el trap la vuelve a arrancar. Se monta el workspace/ y os/ del host igual que
+# en Compose porque la migración v1 importa de ahí docs y reglas.
+echo "Ensayando la migración de la base de datos con la imagen nueva..."
+docker run --rm --entrypoint sh \
+  -v "$DATA_DIR:/migrate-src:ro" \
+  -v "$ROOT_DIR/workspace:/app/workspace:ro" \
+  -v "$ROOT_DIR/os:/app/os:ro" \
+  "$LOADED_IMAGE" -c "mkdir -p /tmp/data && cp /migrate-src/product-os.db* /tmp/data/ \
+    && PRODUCT_OS_DATA_DIR_OVERRIDE=/tmp/data node server/src/migrate-cli.js --dry-run"
+
 if [[ "$LOADED_IMAGE" != "$COMPOSE_IMAGE" ]]; then
   echo "Aplicando la imagen cargada a la etiqueta de Compose: $COMPOSE_IMAGE"
   docker tag "$LOADED_IMAGE" "$COMPOSE_IMAGE"
 fi
 
-echo "Arrancando Product OS con el contenedor recreado y sin reconstruir la imagen..."
+echo "Arrancando Cardinal con el contenedor recreado y sin reconstruir la imagen..."
 docker compose up -d --no-build --force-recreate
 trap - ERR
 

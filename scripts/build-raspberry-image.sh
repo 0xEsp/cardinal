@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_PLATFORM="${TARGET_PLATFORM:-linux/arm64}"
-IMAGE_TAG="${1:-gotty-product-os:raspberry}"
+IMAGE_TAG="${1:-cardinal:raspberry}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Error: Docker no está instalado o no está en PATH." >&2

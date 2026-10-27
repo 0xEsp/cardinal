@@ -7,3 +7,8 @@ releases
 .env
 .playwright-mcp
 .DS_Store
+# Docs y reglas viven en la SQLite; las carpetas del host solo se montan
+# (solo lectura) para la importación inicial. Nunca deben ir en la imagen:
+# una copia vieja se importaría como si fuera la buena.
+workspace
+os
