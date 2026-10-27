@@ -14,7 +14,7 @@ Cuando el usuario pida desplegar cambios de este proyecto, trabaja desde `/Users
 
 `load-raspberry-image.sh` comprueba el volumen `/app/data`, detiene el contenedor, hace una copia del directorio de datos (desde un contenedor, porque `secrets/`, `codex/` y `claude/` pertenecen a root; excluye `cli/` y `agent-work/`), **ensaya las migraciones de la base con la imagen nueva sobre una copia** (`node server/src/migrate-cli.js --dry-run`) y solo si el ensayo pasa cambia de imagen y recrea el servicio. Si el ensayo falla, la imagen anterior sigue activa: informa del error del ensayo tal cual. No borres ni sustituyas el volumen.
 
-Docs y reglas viven en la SQLite (tablas `documents` y `document_versions`), versionadas dentro de Cardinal: ya no se sincronizan por Git. La migración v1 los importó una única vez desde `workspace/docs/` y `os/` del checkout de la Raspberry, que se montan en solo lectura para eso; no los borres hasta confirmar que todo está bien. Antes de cada migración el servidor deja una copia `data/backups/product-os-pre-vN-<fecha>.db`.
+Docs y reglas viven en la SQLite (tablas `documents` y `document_versions`), versionadas dentro de Cardinal: ya no se sincronizan por Git. La migración v1 los importó una única vez desde `workspace/docs/` y `os/` del checkout de la Raspberry; esos ficheros ya no se montan ni se usan, y editarlos no cambia nada en Cardinal. Antes de cada migración el servidor deja una copia `data/backups/product-os-pre-vN-<fecha>.db`.
 
 ## Paper (diseño)
 

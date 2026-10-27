@@ -10,9 +10,4 @@ services:
       # La SQLite vive en el host y no forma parte de la imagen.
       # En la Raspberry se fija a /home/0xEsp/justgame-product-os/data.
       - ${PRODUCT_OS_DATA_DIR:-./data}:/app/data
-      # Solo lectura y solo para la migración v1 de una instalación anterior a
-      # Cardinal: importa a la SQLite los docs y reglas que vivían en ficheros.
-      # En una instalación nueva no existen y no hacen falta.
-      - ./workspace:/app/workspace:ro
-      - ./os:/app/os:ro
     restart: unless-stopped

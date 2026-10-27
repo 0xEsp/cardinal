@@ -151,7 +151,7 @@ Todo vive en `data/product-os.db` (SQLite nativa de Node, sin dependencias compi
 
 | Versión | Cambio |
 |---|---|
-| v1 | Proyectos, docs y reglas en la base. En una instalación anterior a Cardinal crea el proyecto con las cards existentes e importa los docs y reglas que estaban en ficheros (`workspace/docs/` y `os/`, montados en solo lectura); se niega a migrar si faltan. |
+| v1 | Proyectos, docs y reglas en la base. En una instalación anterior a Cardinal crea el proyecto con las cards existentes e importa los docs y reglas que estaban en ficheros (`workspace/docs/` y `os/`); se niega a migrar si faltan, así que para actualizar una instalación así hay que montarlos en solo lectura en `/app/workspace` y `/app/os` durante el primer arranque. |
 | v2 | Tokens del MCP de agentes. |
 
 Ensayo sin modificar la base: `node server/src/migrate-cli.js --dry-run`.
