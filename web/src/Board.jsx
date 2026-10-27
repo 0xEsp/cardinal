@@ -1,27 +1,36 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.js';
+import { href, navigate } from './router.js';
+import { StackChip, cardStatus, elapsed } from './ui.jsx';
 
-const COLUMNS = [
-  { id: 'backlog', label: 'Backlog', short: 'Backlog' },
-  { id: 'todo', label: 'To Do', short: 'To Do' },
-  { id: 'in-progress', label: 'In Progress', short: 'In Prog' },
-  { id: 'done-dev', label: 'Done Dev', short: 'D. Dev' },
-  { id: 'done', label: 'Done', short: 'Done' },
-];
-
-const STACKS = ['app', 'web', 'backend'];
-
-export default function Board({ cards, onOpen, onChanged, showToast }) {
+export default function Board({ project, cards, onChanged, showToast }) {
   const [dragId, setDragId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [newTitle, setNewTitle] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
   const [stackFilter, setStackFilter] = useState([]);
   const [versionFilter, setVersionFilter] = useState('');
-  const [showDone, setShowDone] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const boardRef = useRef(null);
+  const searchRef = useRef(null);
   const dragIdRef = useRef(null);
   const dropTargetRef = useRef(null);
+
+  const archive = project.columns.find((column) => column.archive);
+  const columns = project.columns.filter((column) => !column.archive || showArchive);
+
+  // ⌘K / Ctrl+K enfoca la búsqueda del board.
+  useEffect(() => {
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const setActiveDrag = (cardId) => {
     dragIdRef.current = cardId;
@@ -40,20 +49,13 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
     setDropTarget(null);
   };
 
-  // En móvil el board arranca en "To Do", no en Backlog
-  useEffect(() => {
-    if (window.matchMedia('(max-width: 720px)').matches && boardRef.current) {
-      const todoCol = boardRef.current.children[1];
-      if (todoCol) boardRef.current.scrollLeft = todoCol.offsetLeft - 8;
-    }
-  }, []);
-
   const versions = useMemo(
     () => [...new Set(cards.flatMap((c) => c.stacks.map((s) => s.version)).filter(Boolean))].sort(),
     [cards]
   );
 
   const matches = (card) => {
+    if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false;
     if (stackFilter.length && !card.stacks.some((s) => stackFilter.includes(s.name))) return false;
     if (versionFilter && !card.stacks.some((s) => s.version === versionFilter)) return false;
     return true;
@@ -66,15 +68,16 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
     try {
       await api.moveCard(card.id, colId, beforeId);
       onChanged();
-      if (colId === 'done') showToast(`"${card.title}" archivada en Done`);
+      if (colId === archive?.id) showToast(`«${card.title}» archivada`);
     } catch (e) {
       showToast(e.message, true);
     }
   };
 
   const moveBy = (card, delta) => {
-    const idx = COLUMNS.findIndex((c) => c.id === card.column);
-    const target = COLUMNS[idx + delta];
+    const all = project.columns;
+    const idx = all.findIndex((c) => c.id === card.column);
+    const target = all[idx + delta];
     if (target) moveCard(card, target.id);
   };
 
@@ -133,70 +136,78 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
     e.preventDefault();
     if (!newTitle.trim()) return;
     try {
-      await api.createCard(newTitle.trim());
+      const card = await api.createCard(project.id, { title: newTitle.trim() });
       setNewTitle('');
-      onChanged();
+      setCreating(false);
+      await onChanged();
+      navigate({ projectId: project.id, view: 'card', param: card.id });
     } catch (e2) {
       showToast(e2.message, true);
     }
   };
 
-  const doneCount = cards.filter((c) => c.column === 'done').length;
-  const filtersActive = stackFilter.length > 0 || versionFilter;
+  const archived = archive ? cards.filter((c) => c.column === archive.id).length : 0;
+  const active = cards.length - archived;
+  const filtersActive = stackFilter.length > 0 || versionFilter || search;
 
   return (
-    <div className="board-wrap">
-      <div className="board-toolbar">
-        <form className="new-card" onSubmit={handleCreate}>
-          <input
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="Nueva card… (se crea en Backlog)"
-          />
-          <button className="btn primary" type="submit">+</button>
+    <div className="page board-page">
+      <header className="page-head">
+        <div className="grow">
+          <p className="crumb">{project.name} / board — {active} cards activas</p>
+          <h1>Board</h1>
+        </div>
+        <label className="search">
+          <span className="mono">⌘K</span>
+          <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="buscar cards…" />
+        </label>
+        <button className="btn primary" onClick={() => setCreating(true)}>+ Nueva card</button>
+      </header>
+
+      {creating && (
+        <form className="new-card-bar" onSubmit={handleCreate}>
+          <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={`Título de la card (entra en ${project.columns.find((c) => !c.archive)?.name})`} />
+          <button className="btn primary" type="submit" disabled={!newTitle.trim()}>Crear</button>
+          <button className="btn ghost" type="button" onClick={() => { setCreating(false); setNewTitle(''); }}>Cancelar</button>
         </form>
-        <button
-          className={filtersActive ? 'btn filter-toggle active' : 'btn filter-toggle'}
-          onClick={() => setShowFilters(!showFilters)}
-        >
-          ⚙ Filtros{filtersActive ? ' •' : ''}
-        </button>
-        <div className={showFilters ? 'filters open' : 'filters'}>
-          {STACKS.map((s) => (
-            <button
-              key={s}
-              className={stackFilter.includes(s) ? `chip stack-${s} on` : 'chip off'}
-              onClick={() => toggleStackFilter(s)}
-            >
-              {s}
-            </button>
-          ))}
-          <select value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)} className="version-select">
+      )}
+
+      <div className="filters">
+        <button className={stackFilter.length === 0 ? 'chip ink' : 'chip'} onClick={() => setStackFilter([])}>Todos</button>
+        {project.stacks.map((name, index) => (
+          <button key={name} className={!stackFilter.length || stackFilter.includes(name) ? 'chip-toggle on' : 'chip-toggle'} onClick={() => toggleStackFilter(name)}>
+            <StackChip name={name} index={index} />
+          </button>
+        ))}
+        {versions.length > 0 && (
+          <select value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)} className="select mono">
             <option value="">versión: todas</option>
             {versions.map((v) => <option key={v} value={v}>v{v}</option>)}
           </select>
-          <button className={showDone ? 'chip defined on' : 'chip off'} onClick={() => setShowDone(!showDone)}>
-            {showDone ? '✕ ocultar done' : `ver done (${doneCount})`}
+        )}
+        {filtersActive && <button className="link" onClick={() => { setStackFilter([]); setVersionFilter(''); setSearch(''); }}>limpiar</button>}
+        <span className="grow" />
+        {archive && (
+          <button className="link mono" onClick={() => setShowArchive(!showArchive)}>
+            {showArchive ? 'OCULTAR ARCHIVO ✕' : `${archive.name.toUpperCase()} [${archived}] →`}
           </button>
-          {filtersActive && (
-            <button className="btn ghost" onClick={() => { setStackFilter([]); setVersionFilter(''); }}>limpiar</button>
-          )}
-        </div>
+        )}
       </div>
 
-      <div className="board" ref={boardRef}>
-        {COLUMNS.map((col, colIdx) => {
-          const isDone = col.id === 'done';
+      <div className="columns" ref={boardRef}>
+        {columns.map((col) => {
+          const colIdx = project.columns.indexOf(col);
           const colCards = cards.filter((c) => c.column === col.id && matches(c));
-          const visible = isDone && !showDone ? [] : colCards;
           return (
-            <div
+            <section
               key={col.id}
               className={dropTarget?.colId === col.id ? 'column drag-over' : 'column'}
               data-column-id={col.id}
             >
               <div className="column-head">
-                {col.label} <span className="count">{colCards.length}</span>
+                <span className="mono muted">{String(colIdx + 1).padStart(2, '0')}</span>
+                <h2 className="grow">{col.name}</h2>
+                <span className="mono">[{colCards.length}]</span>
               </div>
               <div
                 className={dropTarget?.colId === col.id && dropTarget.beforeId === null ? 'column-body drop-at-end' : 'column-body'}
@@ -207,114 +218,86 @@ export default function Board({ cards, onOpen, onChanged, showToast }) {
                 }}
                 onDrop={(e) => handleDrop(e, col.id)}
               >
-                {isDone && !showDone && (
-                  <p className="empty done-hint">
-                    Arrastra aquí para archivar.{doneCount > 0 ? ` ${doneCount} archivadas — usa "ver done".` : ''}
-                  </p>
+                {colCards.length === 0 && (
+                  <p className="column-empty">{col.archive ? 'Arrastra aquí para archivar.' : `Sin cards${filtersActive ? ' con estos filtros' : ''}`}</p>
                 )}
-                {!isDone && visible.length === 0 && (
-                  <p className="empty done-hint">Sin cards{filtersActive ? ' (con estos filtros)' : ''}</p>
-                )}
-                {visible.map((card, cardIdx) => (
-                  <div
-                    key={card.id}
-                    className={[
-                      'card',
-                      dragId === card.id ? 'dragging' : '',
-                      dropTarget?.colId === col.id && dropTarget.beforeId === card.id ? 'drop-before' : '',
-                    ].filter(Boolean).join(' ')}
-                    data-card-id={card.id}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', card.id);
-                      setActiveDrag(card.id);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const before = e.clientY < rect.top + rect.height / 2;
-                      setActiveDropTarget({
-                        colId: col.id,
-                        beforeId: before ? card.id : visible[cardIdx + 1]?.id || null,
-                        edge: before || visible[cardIdx + 1] ? 'before' : 'end',
-                      });
-                    }}
-                    onDrop={(e) => handleDrop(
-                      e,
-                      col.id,
-                      dropTargetRef.current?.colId === col.id ? dropTargetRef.current.beforeId : card.id
-                    )}
-                    onDragEnd={clearDrag}
-                    onClick={() => onOpen(card.id)}
-                  >
-                    <div className="card-title-row">
-                      <span
-                        className="drag-handle"
-                        title="Arrastrar para priorizar"
-                        aria-label="Arrastrar para priorizar"
-                        onClick={(e) => e.stopPropagation()}
-                        onPointerDown={(e) => handleTouchDragStart(e, card.id)}
-                        onPointerMove={handleTouchDragMove}
-                        onPointerUp={handleTouchDragEnd}
-                        onPointerCancel={handleTouchDragEnd}
-                      >
-                        ⠿
-                      </span>
-                      <div className="card-title">{card.title}</div>
-                    </div>
-                    <div className="card-meta">
-                      {card.stacks.map((s) => (
-                        <span key={s.name} className={`chip stack-${s.name}`}>
-                          {s.name}{s.version ? ` v${s.version}` : ''}
-                        </span>
-                      ))}
-                      {card.definition && <span className="chip defined" title="Tiene definición generada">✦ def</span>}
-                      {card.design && (
+                {colCards.map((card, cardIdx) => {
+                  const status = cardStatus(card, col);
+                  return (
+                    <article
+                      key={card.id}
+                      className={[
+                        'tile',
+                        card.agent ? 'tile-live' : '',
+                        dragId === card.id ? 'dragging' : '',
+                        dropTarget?.colId === col.id && dropTarget.beforeId === card.id ? 'drop-before' : '',
+                      ].filter(Boolean).join(' ')}
+                      data-card-id={card.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', card.id);
+                        setActiveDrag(card.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const before = e.clientY < rect.top + rect.height / 2;
+                        setActiveDropTarget({
+                          colId: col.id,
+                          beforeId: before ? card.id : colCards[cardIdx + 1]?.id || null,
+                          edge: before || colCards[cardIdx + 1] ? 'before' : 'end',
+                        });
+                      }}
+                      onDrop={(e) => handleDrop(
+                        e,
+                        col.id,
+                        dropTargetRef.current?.colId === col.id ? dropTargetRef.current.beforeId : card.id
+                      )}
+                      onDragEnd={clearDrag}
+                      onClick={() => { window.location.hash = href({ projectId: project.id, view: 'card', param: card.id }); }}
+                    >
+                      <div className="tile-title-row">
                         <span
-                          className={card.designStatus === 'stale' ? 'chip design stale' : 'chip design'}
-                          title={card.designStatus === 'stale' ? 'Diseño desactualizado respecto a la definición' : `Tiene diseño en ${card.design.tool === 'moki' ? 'Moki' : 'Paper'}`}
+                          className="drag-handle"
+                          title="Arrastrar para priorizar"
+                          aria-label="Arrastrar para priorizar"
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => handleTouchDragStart(e, card.id)}
+                          onPointerMove={handleTouchDragMove}
+                          onPointerUp={handleTouchDragEnd}
+                          onPointerCancel={handleTouchDragEnd}
                         >
-                          🎨{card.designStatus === 'stale' ? ' ⚠' : ''}
+                          ⠿
                         </span>
-                      )}
-                      {card.commentCount > 0 && (
-                        <span className="chip comments" title={`${card.commentCount} comentarios`}>
-                          ◉ {card.commentCount}
+                        <h3 className="tile-title">{card.title}</h3>
+                      </div>
+                      <div className="tile-meta">
+                        {card.stacks.length === 0 && <span className="mono muted small">sin stack</span>}
+                        {card.stacks.map((s) => (
+                          <StackChip key={s.name} name={s.name} version={s.version} index={project.stacks.indexOf(s.name)} small />
+                        ))}
+                        <span className="grow" />
+                        {card.commentCount > 0 && <span className="mono small" title={`${card.commentCount} comentarios`}>◉{card.commentCount}</span>}
+                        <span className={`status mono ${card.agent ? 'live' : status.tone}`}>
+                          {card.agent ? `● AGENTE ${elapsed(card.agent.since)}` : status.label}
                         </span>
-                      )}
-                      {card.column === 'done-dev' && (
-                        <span
-                          className={`documentation-icon ${card.documentationStatus === 'documented' ? 'documented' : 'pending'}`}
-                          title={card.documentationStatus === 'documented' ? 'Documentación actualizada' : 'Pendiente de documentar'}
-                          aria-label={card.documentationStatus === 'documented' ? 'Documentación actualizada' : 'Pendiente de documentar'}
-                        >
-                          {card.documentationStatus === 'documented' ? '✓ Doc' : '◷ Doc'}
-                        </span>
-                      )}
-                    </div>
-                    {/* Mover sin drag & drop — solo visible en táctil */}
-                    <div className="card-move">
-                      <button
-                        className="btn move-btn"
-                        disabled={colIdx === 0}
-                        onClick={(e) => { e.stopPropagation(); moveBy(card, -1); }}
-                      >
-                        ◀ {colIdx > 0 ? COLUMNS[colIdx - 1].short : ''}
-                      </button>
-                      <button
-                        className="btn move-btn"
-                        disabled={colIdx === COLUMNS.length - 1}
-                        onClick={(e) => { e.stopPropagation(); moveBy(card, 1); }}
-                      >
-                        {colIdx < COLUMNS.length - 1 ? COLUMNS[colIdx + 1].short : ''} ▶
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                      </div>
+                      {/* Mover sin drag & drop: solo en pantallas táctiles */}
+                      <div className="tile-move">
+                        <button className="btn tiny" disabled={colIdx === 0} onClick={(e) => { e.stopPropagation(); moveBy(card, -1); }}>
+                          ◀ {project.columns[colIdx - 1]?.name || ''}
+                        </button>
+                        <button className="btn tiny" disabled={colIdx === project.columns.length - 1} onClick={(e) => { e.stopPropagation(); moveBy(card, 1); }}>
+                          {project.columns[colIdx + 1]?.name || ''} ▶
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
-            </div>
+            </section>
           );
         })}
       </div>

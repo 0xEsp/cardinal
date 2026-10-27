@@ -1,20 +1,39 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
+import { formatDate } from './ui.jsx';
 
-export default function AgentRuns({ cardId, compact = false }) {
-  const [runs, setRuns] = useState([]);
-  const [loading, setLoading] = useState(true);
+export const RUN_STATUS = {
+  running: { label: 'EN CURSO', color: '#FFD23F' },
+  completed: { label: 'COMPLETADA', color: '#7FD6A2' },
+  waiting_input: { label: 'ESPERANDO', color: '#FFFFFF' },
+  stopped: { label: 'DETENIDA', color: '#E6E0D4' },
+  interrupted: { label: 'INTERRUMPIDA', color: '#E6E0D4' },
+  failed: { label: 'FALLIDA', color: '#FF8A6B' },
+};
+
+export function runModeLabel(mode) {
+  if (mode === 'document') return 'documentar';
+  if (mode === 'define') return 'definir';
+  if (mode?.startsWith('design')) return mode === 'design:promote' ? 'promocionar' : mode === 'design:comments' ? 'comentarios' : 'diseñar';
+  return mode;
+}
+
+export function RunStatus({ status }) {
+  const item = RUN_STATUS[status] || { label: String(status).toUpperCase(), color: '#FFFFFF' };
+  return <span className="sticker small mono" style={{ background: item.color }}>{item.label}</span>;
+}
+
+/** Historial de ejecuciones de una card (pestaña Ejecuciones). */
+export default function AgentRuns({ cardId }) {
+  const [runs, setRuns] = useState(null);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       setError(null);
       setRuns(await api.agentRuns(cardId));
     } catch (e) {
       setError(e.message);
-    } finally {
-      setLoading(false);
     }
   }, [cardId]);
 
@@ -22,63 +41,35 @@ export default function AgentRuns({ cardId, compact = false }) {
     load();
   }, [load]);
 
-  return (
-    <section className={compact ? 'agent-runs compact' : 'agent-runs'}>
-      <div className="agent-runs-head">
-        <div>
-          <h3>Historial de ejecuciones</h3>
-          <p>Modelo, contexto consultado, validación y revisión de cada ejecución.</p>
-        </div>
-        <button className="btn ghost" onClick={load} disabled={loading} title="Actualizar historial">↻</button>
-      </div>
-      {loading && <p className="empty">Cargando historial…</p>}
-      {error && <p className="empty">{error}</p>}
-      {!loading && !error && runs.length === 0 && <p className="empty">Todavía no hay ejecuciones para esta card.</p>}
-      {!loading && !error && runs.length > 0 && (
-        <div className="agent-runs-list">
-          {runs.map((run) => <RunItem key={run.id} run={run} />)}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function RunItem({ run }) {
-  const validation = run.validation || {};
-  const review = run.review || {};
-  const statusLabel = {
-    running: 'En curso',
-    completed: 'Completada',
-    waiting_input: 'Esperando instrucciones',
-    stopped: 'Detenida',
-    interrupted: 'Interrumpida por reinicio',
-    failed: 'Fallida',
-  }[run.status] || run.status;
-  const reviewLabel = review.ok ? 'aprobada' : review.issues?.length ? 'con incidencias' : 'no realizada';
-  const validationLabel = validation.ok ? 'correcta' : validation.errors?.length ? 'con errores' : 'no realizada';
+  if (error) return <p className="notice warn">{error}</p>;
+  if (!runs) return <p className="empty">Cargando historial…</p>;
+  if (!runs.length) return <p className="empty">Todavía no hay ejecuciones para esta card.</p>;
 
   return (
-    <article className={`agent-run status-${run.status}`}>
-      <div className="agent-run-top">
-        <strong>{run.mode === 'document' ? 'Documentación' : 'Definición'}</strong>
-        <span className="agent-run-status">{statusLabel}</span>
-        <time dateTime={run.startedAt}>{formatDate(run.startedAt)}</time>
-      </div>
-      <div className="agent-run-model">{run.model} · contexto {run.contextRevision || '—'}</div>
-      <div className="agent-run-details">
-        <span><b>Buscados:</b> {run.docsSearched?.length ? run.docsSearched.join(', ') : '—'}</span>
-        <span><b>Leídos:</b> {run.docsRead?.length ? run.docsRead.join(', ') : '—'}</span>
-        <span><b>Escritos:</b> {run.filesWritten?.length ? run.filesWritten.join(', ') : '—'}</span>
-        <span><b>Validación:</b> {validationLabel}</span>
-        <span><b>Revisión:</b> {reviewLabel}{run.reviewCount ? ` (${run.reviewCount})` : ''}</span>
-      </div>
-      {review.summary && <p className="agent-run-summary">{review.summary}</p>}
-      {run.error && <p className="agent-run-error">{run.error}</p>}
-    </article>
+    <div className="runs-list">
+      {runs.map((run) => {
+        const review = run.review || {};
+        const validation = run.validation || {};
+        return (
+          <article key={run.id} className="run">
+            <div className="run-top">
+              <RunStatus status={run.status} />
+              <strong>{runModeLabel(run.mode)}</strong>
+              <span className="mono small grow">{run.model}</span>
+              <span className="mono small muted">{formatDate(run.startedAt)}</span>
+            </div>
+            <dl className="run-details">
+              <dt>BUSCADOS</dt><dd>{run.docsSearched?.join(', ') || '—'}</dd>
+              <dt>LEÍDOS</dt><dd>{run.docsRead?.join(', ') || '—'}</dd>
+              <dt>ESCRITOS</dt><dd>{run.filesWritten?.join(', ') || '—'}</dd>
+              <dt>VALIDACIÓN</dt><dd>{validation.ok ? 'correcta' : validation.errors?.length ? 'con errores' : '—'}</dd>
+              <dt>REVISIÓN</dt><dd>{review.ok ? 'aprobada' : review.issues?.length ? 'con incidencias' : '—'}{run.reviewCount ? ` (${run.reviewCount})` : ''}</dd>
+            </dl>
+            {review.summary && <p className="muted">{review.summary}</p>}
+            {run.error && <p className="notice warn">{run.error}</p>}
+          </article>
+        );
+      })}
+    </div>
   );
-}
-
-function formatDate(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
 }

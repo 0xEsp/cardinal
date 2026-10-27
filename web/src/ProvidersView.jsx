@@ -45,13 +45,21 @@ export default function ProvidersView({ config, onConfigChanged, showToast }) {
     }
   };
 
-  if (!data || !defaults) return <div className="providers-view"><p className="empty">Cargando proveedores…</p></div>;
+  if (!data || !defaults) return <div className="page"><p className="empty pad">Cargando proveedores…</p></div>;
   const byId = Object.fromEntries(data.providers.map((p) => [p.id, p]));
   const common = { busy, act, showToast };
 
   return (
-    <div className="providers-view">
-      <section className="provider-card">
+    <div className="page">
+      <header className="page-head">
+        <div className="grow">
+          <p className="crumb">conexiones / ia y diseño</p>
+          <h1>IA y diseño</h1>
+          <p className="muted">Proveedores de los agentes y conexión con las herramientas de diseño. Es común a todos los proyectos.</p>
+        </div>
+      </header>
+    <div className="page-body providers-view">
+      <section className="provider-card yellow">
         <h2>Modelo por defecto</h2>
         <p className="provider-help">Es el que aparece preseleccionado al lanzar un agente. Puedes cambiarlo en cada card.</p>
         <ModelPicker
@@ -98,6 +106,7 @@ export default function ProvidersView({ config, onConfigChanged, showToast }) {
       <DefaultDesignToolCard config={config} onConfigChanged={onConfigChanged} showToast={showToast} />
       <DesignToolCard tool="paper" onConfigChanged={onConfigChanged} showToast={showToast} />
       <DesignToolCard tool="moki" onConfigChanged={onConfigChanged} showToast={showToast} />
+    </div>
     </div>
   );
 }
@@ -147,7 +156,7 @@ const DESIGN_TOOL_TEXTS = {
     help: (
       <>
         Permite que el agente de definición consulte los diseños y que el agente de diseño pinte en Paper. Paper solo expone su
-        MCP en el Mac donde está abierta la app, así que el Product OS se conecta a través de un <b>puente</b> que corre en ese Mac.
+        MCP en el Mac donde está abierta la app, así que Cardinal se conecta a través de un <b>puente</b> que corre en ese Mac.
       </>
     ),
     warning: (
@@ -160,7 +169,6 @@ const DESIGN_TOOL_TEXTS = {
     ),
     connectionLabel: 'Puente',
     connection: (status) => `${status.bridge ? `conectado${status.host ? ` (${status.host})` : ''}` : 'sin respuesta'} · Paper ${status.paperApp ? 'abierto' : 'cerrado'}`,
-    canListFiles: (status) => status.bridge && status.paperApp,
     urlPlaceholder: 'http://<ip-del-mac>:4410/mcp',
     urlSaved: 'URL del puente guardada',
     tokenPlaceholder: 'Token del puente (paper-bridge.mjs token)',
@@ -175,25 +183,24 @@ const DESIGN_TOOL_TEXTS = {
     ),
     warning: (
       <div className="provider-help">
-        Usa la IP del servidor de Moki (desde el contenedor del Product OS los nombres de la red local pueden no resolverse) y el
+        Usa la IP del servidor de Moki (desde el contenedor de Cardinal los nombres de la red local pueden no resolverse) y el
         token de Moki (<code>MOKI_TOKEN</code>, guardado en el Llavero del Mac al desplegarlo).
       </div>
     ),
     connectionLabel: 'Servidor',
     connection: (status) => (status.server ? 'responde' : 'sin respuesta'),
-    canListFiles: (status) => status.server && status.configured,
     urlPlaceholder: 'http://<ip-del-servidor-de-moki>:7410/mcp',
     urlSaved: 'URL de Moki guardada',
     tokenPlaceholder: 'Token de Moki (MOKI_TOKEN)',
   },
 };
 
-// Configuración de una herramienta de diseño: URL del MCP, token y fichero de Gotty.
+// Conexión con una herramienta de diseño: URL del MCP y token. El fichero de
+// diseño se elige en los ajustes de cada proyecto.
 function DesignToolCard({ tool, onConfigChanged, showToast }) {
   const texts = DESIGN_TOOL_TEXTS[tool];
   const [status, setStatus] = useState(null);
   const [url, setUrl] = useState('');
-  const [files, setFiles] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -222,8 +229,6 @@ function DesignToolCard({ tool, onConfigChanged, showToast }) {
       setBusy(false);
     }
   };
-
-  const loadFiles = () => run(async () => setFiles((await api.designToolFiles(tool)).files));
 
   if (!status) return null;
   const pill = status.ready ? '● Listo' : `○ ${status.message || 'No configurado'}`;
@@ -263,24 +268,7 @@ function DesignToolCard({ tool, onConfigChanged, showToast }) {
         label="Guardar token"
         onSave={(token) => run(() => api.saveDesignTool(tool, { token }), 'Token guardado')}
       />
-      <div className="provider-row">
-        <span className="provider-label">Fichero</span>
-        <span className="provider-value">{status.fileId ? `${status.fileName || 'sin nombre'} · ${status.fileId}` : 'sin elegir'}</span>
-        <button className="btn" disabled={busy || !texts.canListFiles(status)} onClick={loadFiles}>Elegir fichero</button>
-      </div>
-      {files && (
-        <div className="provider-actions">
-          {files.map((file) => (
-            <button
-              key={file.id}
-              className={file.id === status.fileId ? 'btn primary' : 'btn'}
-              onClick={() => run(() => api.saveDesignTool(tool, { fileId: file.id, fileName: file.name }), `Fichero de diseño: ${file.name}`).then(() => setFiles(null))}
-            >
-              {file.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <p className="mono small muted">EL FICHERO DE DISEÑO SE ELIGE EN LOS AJUSTES DE CADA PROYECTO.</p>
     </section>
   );
 }
