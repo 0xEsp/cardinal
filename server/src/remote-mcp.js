@@ -30,6 +30,12 @@ export async function callRemoteTool({ url, token, name, args = {}, timeoutMs = 
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (res.status === 401) throw Object.assign(new Error('El servidor MCP rechaza el token.'), { status: 401 });
+    // Moki responde 403 sin cuerpo si el host con el que se le llama no está en su
+    // MOKI_ALLOWED_HOSTS; sin este caso el error llegaba como "Unexpected end of JSON input".
+    if (res.status === 403) {
+      throw Object.assign(new Error(`El servidor MCP rechaza la petición (403): añade ${new URL(url).host.split(':')[0]} a sus hosts permitidos.`), { status: 403 });
+    }
+    if (!res.ok && res.status !== 202) throw Object.assign(new Error(`El servidor MCP responde HTTP ${res.status}.`), { status: res.status });
     return { res, json: await parseBody(res) };
   };
   const init = await post({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'cardinal', version: '1' } } });
