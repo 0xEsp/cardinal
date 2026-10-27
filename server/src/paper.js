@@ -29,14 +29,13 @@ export function paperConfig() {
   const saved = getSetting('paper', {});
   return {
     url: saved.url || process.env.PAPER_BRIDGE_URL || '',
-    fileId: saved.fileId || process.env.PAPER_FILE_ID || '',
-    fileName: saved.fileName || '',
     token: getSecret(TOKEN_SECRET, TOKEN_ENV),
     tokenSource: secretSource(TOKEN_SECRET, TOKEN_ENV),
   };
 }
 
-export function savePaperConfig({ url, token, fileId, fileName }) {
+// El fichero de diseño es de cada proyecto (projects.design.paper).
+export function savePaperConfig({ url, token }) {
   const current = getSetting('paper', {});
   const next = { ...current };
   if (url !== undefined) {
@@ -45,10 +44,6 @@ export function savePaperConfig({ url, token, fileId, fileName }) {
       throw Object.assign(new Error('La URL debe ser del tipo http://<ip-del-mac>:4410/mcp'), { status: 400 });
     }
     next.url = clean && !clean.endsWith('/mcp') ? `${clean}/mcp` : clean;
-  }
-  if (fileId !== undefined) {
-    next.fileId = String(fileId).trim();
-    next.fileName = String(fileName || '').trim();
   }
   setSetting('paper', next);
   if (token !== undefined && String(token).trim()) setSecret(TOKEN_SECRET, token);
@@ -62,9 +57,12 @@ function healthUrl(url) {
   return url.replace(/\/mcp$/, '/health');
 }
 
-export async function paperStatus() {
+/** file: como en mokiStatus (sin argumento solo se comprueba el puente). */
+export async function paperStatus(file) {
   const config = paperConfig();
-  const base = { configured: Boolean(config.url && config.token), url: config.url, fileId: config.fileId, fileName: config.fileName, tokenSource: config.tokenSource };
+  const fileId = file?.fileId || '';
+  const needsFile = file !== undefined;
+  const base = { configured: Boolean(config.url && config.token), url: config.url, fileId, fileName: file?.fileName || '', tokenSource: config.tokenSource };
   if (!base.configured) return { ...base, bridge: false, paperApp: false, ready: false, message: 'Configura la URL y el token del puente de Paper.' };
   try {
     const res = await fetch(healthUrl(config.url), {
@@ -73,7 +71,7 @@ export async function paperStatus() {
     });
     if (res.status === 401) return { ...base, bridge: true, paperApp: false, ready: false, message: 'El puente rechaza el token.' };
     const health = await res.json();
-    const ready = Boolean(health.paperApp && config.fileId);
+    const ready = Boolean(health.paperApp && (fileId || !needsFile));
     return {
       ...base,
       bridge: true,
@@ -82,7 +80,7 @@ export async function paperStatus() {
       ready,
       message: !health.paperApp
         ? 'El puente está encendido pero la app de Paper no está abierta en el Mac.'
-        : !config.fileId ? 'Elige el fichero de diseño de Gotty.' : null,
+        : needsFile && !fileId ? 'Elige el fichero de diseño del proyecto.' : null,
     };
   } catch {
     return {

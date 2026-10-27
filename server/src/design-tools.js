@@ -31,7 +31,11 @@ export function saveDefaultDesignTool(id) {
   setSetting('designTool', getDesignTool(id).id);
 }
 
-export async function designToolsStatus() {
-  const entries = await Promise.all(Object.values(DESIGN_TOOLS).map(async (tool) => [tool.id, { label: tool.label, ...(await tool.status()) }]));
+/** Con proyecto, el estado incluye su fichero de diseño; sin él, solo la conexión. */
+export async function designToolsStatus(project) {
+  const entries = await Promise.all(Object.values(DESIGN_TOOLS).map(async (tool) => [
+    tool.id,
+    { label: tool.label, ...(await (project ? tool.status(project.design[tool.id] || {}) : tool.status())) },
+  ]));
   return { default: defaultDesignTool(), tools: Object.fromEntries(entries) };
 }

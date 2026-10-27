@@ -1,18 +1,10 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { OS_DIR } from './paths.js';
-import { listDocs } from './docs.js';
+import { listDocs, readRule } from './docs.js';
 import { getDesignTool } from './design-tools.js';
+import { columnOf, getProject } from './projects.js';
 
-function osFile(name) {
-  const file = path.join(OS_DIR, name);
-  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-}
-
-export function modeForColumn(column) {
-  if (column === 'done-dev') return 'document';
-  if (column === 'done') return null;
-  return 'define';
+/** Agente que toca según la columna de la card (configurable por proyecto). */
+export function modeForColumn(card) {
+  return columnOf(getProject(card.projectId), card.column)?.mode ?? null;
 }
 
 const PLATFORM_LABEL = {
@@ -35,7 +27,7 @@ export function formatDesign(card, { forBuilder = false } = {}) {
   const lines = [
     `## Diseño (${label})`,
     '',
-    `- Fichero: ${design.fileName || 'Diseño de Gotty'} (\`fileId: ${design.fileId}\`)`,
+    `- Fichero: ${design.fileName || `Diseño de ${getProject(card.projectId).name}`} (\`fileId: ${design.fileId}\`)`,
     `- Página: [${design.pageName || design.pageId}](${design.pageUrl}) (\`pageId: ${design.pageId}\`)`,
   ];
   if (card.designStatus === 'stale') {
@@ -69,14 +61,14 @@ const DESIGN_TOOL_NOTES = {
   ],
   moki: [
     '- Infraestructura: Moki es un servidor siempre encendido en la red local (Mac mini). Si las herramientas `moki` fallan por conexión o por token, detente y explícalo: no hay nada que levantar a mano.',
-    '- Lee una vez su guía de uso con `get_guide({ topic: "moki-mcp-instructions" })` antes de pintar, salvo la parte de brief y paleta: el sistema de diseño de Gotty ya está decidido.',
+    '- Lee una vez su guía de uso con `get_guide({ topic: "moki-mcp-instructions" })` antes de pintar, salvo la parte de brief y paleta: el sistema de diseño del proyecto ya está decidido.',
     '- Componentes (obligatorio): todo elemento de UI que exista en `list_components` se coloca como instancia (`create_instance` o `<x-moki-instance component-id="…">`) y se personaliza con overrides (`set_text_content`, `update_styles` sobre `<instanceId>::<capa>`). Nunca lo clones con `<x-moki-clone>`, ni lo rehagas a mano, ni lo desvincules. Elige la variante cuyo nombre y estructura encajan (p. ej. `Button/web/primary · icono + texto`); si ninguna encaja del todo, usa la más cercana y anótalo en `notes`. Nunca edites un componente principal existente.',
     '- Componente nuevo: si la card necesita UI que no existe como componente y se repite o es reutilizable, constrúyelo una vez en un artboard `Components · <card>` de la página de la card, conviértelo con `create_component` (nombre `<Familia>/<plataforma>/<variante>`, como los de `02 · Components`) y úsalo como instancias en los artboards. Si ya pintaste copias a mano, conviértelas con `convert_to_instances` (primero con `dryRun`). Solo puedes crear componentes en la página de la card; al promocionar pasan a `02 · Components`. Anota en `notes` cada componente nuevo y su propósito.',
     '- Moki no permite borrar páginas por MCP.',
   ],
 };
 
-function designToolSection(design, access) {
+function designToolSection(design, access, projectName) {
   if (!design) return '';
   const tool = getDesignTool(design.tool);
   const intro = access === 'write'
@@ -86,8 +78,8 @@ function designToolSection(design, access) {
     `# Herramienta de diseño: ${tool.label}`,
     '',
     intro,
-    `- Fichero de diseño de Gotty: ${design.fileName || '(sin nombre)'} — \`fileId: ${design.fileId}\`. Pasa siempre este fileId a las herramientas que lo acepten.`,
-    `- ${tool.label} es la fuente de diseño de esta card y refleja el producto actual. Las páginas van por feature: \`10–14\` app (Access, Discover, Game, Library, Account) y \`20–25\` web (las mismas features + Public); \`02 · Components\` y \`03 · Patterns\` tienen los masters y patrones de cada plataforma.`,
+    `- Fichero de diseño de ${projectName}: ${design.fileName || '(sin nombre)'} — \`fileId: ${design.fileId}\`. Pasa siempre este fileId a las herramientas que lo acepten.`,
+    `- ${tool.label} es la fuente de diseño de esta card y refleja el producto actual. La organización de páginas, componentes y patrones está en la guía de diseño del proyecto.`,
     '- Empieza con `get_basic_info` para ver páginas, artboards y tokens; usa `find_nodes`, `get_tree_summary` y `get_screenshot` para entender los flujos existentes.',
     ...(access === 'write' ? DESIGN_TOOL_NOTES[tool.id] : []),
   ].join('\n');
@@ -98,33 +90,37 @@ function designToolSection(design, access) {
  * si no tiene acceso a diseños.
  */
 export function buildSystemPrompt(mode, card, { design = null, task = 'design' } = {}) {
-  const sections = [];
+  const project = getProject(card.projectId);
+  const osFile = (name) => readRule(project.id, name);
+  const sections = [
+    `# Proyecto: ${project.name}\n\nTrabajas dentro de Cardinal sobre el proyecto "${project.name}" (id \`${project.id}\`). Sus stacks son: ${project.stacks.join(', ')}. Todo lo que leas o guardes (docs, definición, diseño) pertenece a este proyecto.`,
+  ];
 
   if (mode === 'design') {
     sections.push(osFile('agent-design.md'));
     sections.push('# Referencia: design-guide.md\n\n' + osFile('design-guide.md'));
-    sections.push(designToolSection(design, 'write'));
+    sections.push(designToolSection(design, 'write', project.name));
     sections.push(`# Tarea de este agente: ${task}`);
   } else if (mode === 'define') {
     sections.push(osFile('agent-define.md'));
     sections.push('# Referencia: card-definition.md\n\n' + osFile('card-definition.md'));
     sections.push('# Referencia: tech-definition.md\n\n' + osFile('tech-definition.md'));
-    const stackNames = card.stacks.length ? card.stacks.map((s) => s.name) : ['app', 'web', 'backend'];
+    const stackNames = card.stacks.length ? card.stacks.map((s) => s.name) : project.stacks;
     for (const s of stackNames) {
       const qa = osFile(`qa-criteria-${s}.md`);
       if (qa) sections.push(`# Referencia: qa-criteria-${s}.md\n\n` + qa);
     }
     if (design) {
-      sections.push(`${designToolSection(design, 'read')}\n- Consulta los diseños de los flujos que toca la card para que la definición sea coherente con la UI real (pantallas, estados y componentes existentes). No puedes modificar ${getDesignTool(design.tool).label} desde este agente.`);
+      sections.push(`${designToolSection(design, 'read', project.name)}\n- Consulta los diseños de los flujos que toca la card para que la definición sea coherente con la UI real (pantallas, estados y componentes existentes). No puedes modificar ${getDesignTool(design.tool).label} desde este agente.`);
     }
   } else {
     sections.push(osFile('agent-document.md'));
     sections.push('# Referencia: product-doc-guide.md\n\n' + osFile('product-doc-guide.md'));
   }
 
-  const docs = listDocs();
+  const docs = listDocs(project.id);
   sections.push(
-    '# Documentación de producto existente (workspace/docs/)\n\n' +
+    `# Documentación de producto existente de ${project.name}\n\n` +
       (docs.length ? docs.map((d) => `- ${d.path} — ${d.title}`).join('\n') : '(aún no hay documentos)')
   );
   sections.push(
@@ -134,7 +130,7 @@ export function buildSystemPrompt(mode, card, { design = null, task = 'design' }
 
   const props = `stacks: ${formatStacks(card)} · columna: ${card.column}`;
   if (mode === 'define') {
-    sections.push(`# Card a definir\n\nTítulo: ${card.title}\nPropiedades: ${props}\n\n## Borrador de Manu\n\n${card.draft || '(borrador vacío)'}`);
+    sections.push(`# Card a definir\n\nTítulo: ${card.title}\nPropiedades: ${props}\n\n## Borrador\n\n${card.draft || '(borrador vacío)'}`);
   } else if (mode === 'design') {
     sections.push(
       `# Card a diseñar\n\nTítulo: ${card.title}\nId de la card: ${card.id}\nPropiedades: ${props}\n\n## Definición IA + (fuente de verdad del comportamiento)\n\n${card.definition || '(sin definición)'}\n\n` +
@@ -156,12 +152,12 @@ export function formatStacks(card) {
 }
 
 // Prompt listo para pegar en el feature-builder del proyecto de destino.
-// Plantilla editable en os/feature-prompt.md con {{title}}, {{stacks}},
+// Plantilla editable en la regla feature-prompt.md del proyecto con {{title}}, {{stacks}},
 // {{definition}} y {{designs}} (enlaces e ids de Paper o Moki; vacío si no hay diseño).
 export function buildFeaturePrompt(card) {
   if (!card.definition) throw Object.assign(new Error('La card aún no tiene definición generada'), { status: 400 });
   const template =
-    osFile('feature-prompt.md') ||
+    readRule(card.projectId, 'feature-prompt.md') ||
     '# {{title}}\n\nStacks implicados: {{stacks}}\n\n---\n\n{{definition}}\n\n{{designs}}';
   const designs = formatDesign(card, { forBuilder: true });
   const prompt = template
@@ -178,7 +174,7 @@ export function toolsForMode(mode) {
     type: 'function',
     function: {
       name: 'list_docs',
-      description: 'Lista los documentos de producto existentes en workspace/docs/',
+      description: 'Lista los documentos de producto existentes del proyecto',
       parameters: { type: 'object', properties: {} },
     },
   };
@@ -189,7 +185,7 @@ export function toolsForMode(mode) {
       description: 'Lee el contenido completo de un documento de producto existente',
       parameters: {
         type: 'object',
-        properties: { path: { type: 'string', description: 'Ruta relativa dentro de workspace/docs/, p. ej. "coleccion.md"' } },
+        properties: { path: { type: 'string', description: 'Ruta del documento dentro del proyecto, p. ej. "coleccion.md"' } },
         required: ['path'],
       },
     },
@@ -199,7 +195,7 @@ export function toolsForMode(mode) {
     function: {
       name: 'search_docs',
       description:
-        'Busca términos o conceptos en el contenido completo de workspace/docs/. Devuelve los documentos relevantes y fragmentos para decidir cuáles leer con read_doc.',
+        'Busca términos o conceptos en el contenido completo de los docs del proyecto. Devuelve los documentos relevantes y fragmentos para decidir cuáles leer con read_doc.',
       parameters: {
         type: 'object',
         properties: {
@@ -353,11 +349,11 @@ export function toolsForMode(mode) {
       function: {
         name: 'save_doc',
           description:
-            'Guarda (crea o sobreescribe) un documento de producto en workspace/docs/. Solo funciona después de que review_doc haya aprobado exactamente este path y contenido. Para actualizar uno existente, léelo antes con read_doc y guarda el contenido completo integrando los cambios.',
+            'Guarda (crea o sobreescribe) un documento de producto del proyecto. Solo funciona después de que review_doc haya aprobado exactamente este path y contenido. Para actualizar uno existente, léelo antes con read_doc y guarda el contenido completo integrando los cambios.',
         parameters: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'Ruta relativa del .md dentro de workspace/docs/' },
+            path: { type: 'string', description: 'Ruta del .md dentro de los docs del proyecto' },
             content: { type: 'string', description: 'Contenido completo del documento en markdown' },
           },
           required: ['path', 'content'],

@@ -3,11 +3,13 @@ import path from 'node:path';
 import express from 'express';
 import { ROOT } from './paths.js';
 import * as cards from './cards.js';
+import * as projects from './projects.js';
 import { buildFeaturePrompt } from './prompt.js';
 import * as docs from './docs.js';
 import * as agent from './agent.js';
-import * as git from './git.js';
 import { mcpRouter } from './mcp.js';
+import { listProjectRuns } from './db.js';
+import { agentsMcpRouter, createToken, listTokens, revokeToken } from './mcp-agents.js';
 import { PROVIDERS, defaults, getProvider, providerStatuses, saveDefaults, scheduleCliUpdates } from './providers/index.js';
 import { installCli } from './providers/cli.js';
 import { deletePaperToken, listPaperFiles, paperStatus, savePaperConfig } from './paper.js';
@@ -27,6 +29,8 @@ const app = express();
 app.use(express.json({ limit: '5mb' }));
 // Herramientas del harness para los CLIs (solo accesible desde el contenedor).
 app.use(mcpRouter());
+// MCP para los agentes del usuario, con token (accesible desde la red local).
+app.use(agentsMcpRouter());
 
 const wrap = (fn) => async (req, res) => {
   try {
@@ -42,9 +46,35 @@ app.get('/api/config', wrap(async () => ({
   providers: (await providerStatuses()).map(({ id, label, kind, ready, message, defaultModel }) => ({ id, label, kind, ready, message, defaultModel })),
   designTools: await designToolsStatus(),
   defaults: defaults(),
-  autoPush: process.env.AUTO_PUSH === 'true',
-  columns: cards.COLUMNS,
+  projects: projects.listProjects(),
 })));
+
+// ---- tokens del MCP de agentes ----
+// El token en claro solo se devuelve al crearlo.
+app.get('/api/mcp-tokens', wrap(() => listTokens()));
+app.post('/api/mcp-tokens', wrap((req) => createToken(req.body || {})));
+app.delete('/api/mcp-tokens/:id', wrap((req) => {
+  revokeToken(req.params.id);
+  return { ok: true };
+}));
+
+// ---- proyectos ----
+app.get('/api/projects', wrap(() => projects.listProjects()));
+app.post('/api/projects', wrap((req) => projects.createProject(req.body || {})));
+app.get('/api/projects/:pid', wrap((req) => projects.getProject(req.params.pid)));
+app.put('/api/projects/:pid', wrap((req) => projects.updateProject(req.params.pid, req.body || {})));
+app.delete('/api/projects/:pid', wrap((req) => {
+  projects.deleteProject(req.params.pid);
+  return { ok: true };
+}));
+// Estado de Paper/Moki con el fichero de diseño del proyecto.
+app.get('/api/projects/:pid/design-tools', wrap((req) => designToolsStatus(projects.getProject(req.params.pid))));
+app.get('/api/projects/:pid/cards', wrap((req) => cards.listCards(req.params.pid).map((card) => ({ ...card, agent: agent.agentState(card.id) }))));
+app.get('/api/projects/:pid/agent-runs', wrap((req) => {
+  projects.getProject(req.params.pid);
+  return listProjectRuns(req.params.pid, req.query.limit);
+}));
+app.post('/api/projects/:pid/cards', wrap((req) => cards.createCard({ ...req.body, projectId: req.params.pid })));
 
 // ---- proveedores de IA ----
 // Las credenciales nunca se devuelven al cliente: solo si están configuradas.
@@ -124,8 +154,6 @@ app.delete('/api/providers/codex/device-login', wrap(() => {
 }));
 
 // ---- cards ----
-app.get('/api/cards', wrap(() => cards.listCards()));
-app.post('/api/cards', wrap((req) => cards.createCard(req.body)));
 app.get('/api/cards/:id', wrap((req) => cards.getCard(req.params.id)));
 app.get('/api/cards/:id/prompt', wrap((req) => ({ prompt: buildFeaturePrompt(cards.getCard(req.params.id)) })));
 app.put('/api/cards/:id', wrap((req) => cards.updateCard(req.params.id, req.body)));
@@ -142,25 +170,44 @@ app.delete('/api/cards/:id', wrap((req) => {
   return { ok: true };
 }));
 
-// ---- docs ----
-app.get('/api/docs', wrap(() => docs.listDocs()));
-app.get('/api/docs/content', wrap((req) => ({ path: req.query.path, content: docs.readDoc(req.query.path) })));
-app.put('/api/docs/content', wrap((req) => {
+// ---- docs y reglas ----
+// /api/projects/:pid/docs/… y /api/projects/:pid/rules/… comparten rutas; las
+// reglas son lo que antes era os/.
+const KIND = { docs: 'doc', rules: 'rule' };
+const kindOf = (req) => {
+  const kind = KIND[req.params.kind];
+  if (!kind) throw Object.assign(new Error('Ruta desconocida'), { status: 404 });
+  projects.getProject(req.params.pid);
+  return kind;
+};
+const UI_AUTHOR = { author: 'Manu', source: 'ui' };
+
+app.get('/api/projects/:pid/:kind', wrap((req) => docs.listDocs(req.params.pid, kindOf(req))));
+app.get('/api/projects/:pid/:kind/content', wrap((req) => {
+  const kind = kindOf(req);
+  return { path: req.query.path, content: docs.readDoc(req.params.pid, req.query.path, kind) };
+}));
+app.put('/api/projects/:pid/:kind/content', wrap((req) => {
+  const kind = kindOf(req);
   const content = typeof req.body?.content === 'string' ? req.body.content : '';
-  const path = docs.saveDoc(req.body?.path, content);
-  return { path, content: content.endsWith('\n') ? content : `${content}\n` };
+  const saved = docs.saveDoc(req.params.pid, req.body?.path, content, { kind, ...UI_AUTHOR });
+  return { ...saved, content: docs.readDoc(req.params.pid, saved.path, kind) };
+}));
+app.delete('/api/projects/:pid/:kind/content', wrap((req) => {
+  docs.deleteDoc(req.params.pid, req.query.path, { kind: kindOf(req), ...UI_AUTHOR });
+  return { ok: true };
+}));
+app.get('/api/projects/:pid/:kind/history', wrap((req) => docs.docHistory(req.params.pid, req.query.path, kindOf(req))));
+app.get('/api/projects/:pid/:kind/version', wrap((req) => {
+  const kind = kindOf(req);
+  return { path: req.query.path, version: Number(req.query.v), content: docs.readVersion(req.params.pid, req.query.path, req.query.v, kind) };
+}));
+app.post('/api/projects/:pid/:kind/restore', wrap((req) => {
+  const kind = kindOf(req);
+  return docs.restoreVersion(req.params.pid, req.body?.path, req.body?.version, { kind, ...UI_AUTHOR });
 }));
 
 // ---- agent ----
-const onFinish = async () => {
-  if (process.env.AUTO_PUSH === 'true') {
-    try {
-      await git.commitAndPush();
-    } catch (e) {
-      console.error('AUTO_PUSH falló:', e.message);
-    }
-  }
-};
 
 // slot: "main" (definición/documentación) o "design" (Paper o Moki). task solo en
 // design: design | comments | promote. designTool (paper | moki) solo cuenta si la
@@ -174,11 +221,10 @@ app.post('/api/agent/:cardId/start', wrap((req) => agent.startAgent(req.params.c
   provider: req.body?.provider,
   model: req.body?.model,
   effort: req.body?.effort,
-  onFinish,
 })));
 app.post('/api/agent/:cardId/stop', wrap((req) => agent.stopAgent(req.params.cardId, slotOf(req))));
 app.post('/api/agent/:cardId/message', wrap((req) => {
-  agent.sendMessage(req.params.cardId, req.body.content, { slot: slotOf(req), onFinish });
+  agent.sendMessage(req.params.cardId, req.body.content, { slot: slotOf(req) });
   return { ok: true };
 }));
 app.get('/api/agent/:cardId', wrap((req) => agent.sessionInfo(req.params.cardId, slotOf(req))));
@@ -200,11 +246,6 @@ app.get('/api/agent/:cardId/stream', (req, res) => {
   }
 });
 
-// ---- git ----
-app.get('/api/git/status', wrap(() => git.status()));
-app.post('/api/git/pull', wrap(() => git.pull()));
-app.post('/api/git/push', wrap((req) => git.commitAndPush(req.body?.message)));
-
 // ---- frontend estático (build de producción) ----
 const dist = path.join(ROOT, 'web', 'dist');
 if (fs.existsSync(dist)) {
@@ -214,6 +255,6 @@ if (fs.existsSync(dist)) {
 
 const port = process.env.PORT || 4400;
 app.listen(port, '0.0.0.0', () => {
-  console.log(`product-os escuchando en http://0.0.0.0:${port}`);
+  console.log(`Cardinal escuchando en http://0.0.0.0:${port}`);
   scheduleCliUpdates();
 });

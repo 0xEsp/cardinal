@@ -32,14 +32,14 @@ export function mokiConfig() {
   const saved = getSetting('moki', {});
   return {
     url: saved.url || process.env.MOKI_URL || '',
-    fileId: saved.fileId || process.env.MOKI_FILE_ID || '',
-    fileName: saved.fileName || '',
     token: getSecret(TOKEN_SECRET, TOKEN_ENV),
     tokenSource: secretSource(TOKEN_SECRET, TOKEN_ENV),
   };
 }
 
-export function saveMokiConfig({ url, token, fileId, fileName }) {
+// El fichero de diseño es de cada proyecto (projects.design.moki); aquí solo
+// se guarda la conexión con el servidor.
+export function saveMokiConfig({ url, token }) {
   const next = { ...getSetting('moki', {}) };
   if (url !== undefined) {
     const clean = String(url).trim().replace(/\/+$/, '');
@@ -47,10 +47,6 @@ export function saveMokiConfig({ url, token, fileId, fileName }) {
       throw Object.assign(new Error('La URL debe ser del tipo http://<ip-del-mac-mini>:7410/mcp'), { status: 400 });
     }
     next.url = clean && !clean.endsWith('/mcp') ? `${clean}/mcp` : clean;
-  }
-  if (fileId !== undefined) {
-    next.fileId = String(fileId).trim();
-    next.fileName = String(fileName || '').trim();
   }
   setSetting('moki', next);
   if (token !== undefined && String(token).trim()) setSecret(TOKEN_SECRET, token);
@@ -67,9 +63,14 @@ async function listResources(config) {
   return data.resources || [];
 }
 
-export async function mokiStatus() {
+/**
+ * file: { fileId, fileName } del proyecto. Sin argumento solo se comprueba la
+ * conexión (pestaña IA); con él ({} si el proyecto no tiene fichero), también el fichero.
+ */
+export async function mokiStatus(file) {
   const config = mokiConfig();
-  const base = { configured: Boolean(config.url && config.token), url: config.url, fileId: config.fileId, fileName: config.fileName, tokenSource: config.tokenSource };
+  const fileId = file?.fileId || '';
+  const base = { configured: Boolean(config.url && config.token), url: config.url, fileId, fileName: file?.fileName || '', tokenSource: config.tokenSource };
   if (!base.configured) return { ...base, server: false, ready: false, message: 'Configura la URL y el token de Moki.' };
   try {
     // /api/health no exige token: confirma que el servidor está vivo.
@@ -86,8 +87,9 @@ export async function mokiStatus() {
     const message = e.status === 401 ? 'Moki rechaza el token.' : `Moki responde pero su MCP falla: ${e.message}`;
     return { ...base, server: true, ready: false, message };
   }
-  if (!config.fileId) return { ...base, server: true, ready: false, message: 'Elige el fichero de diseño de Gotty.' };
-  if (!resources.some((item) => item.type === 'file' && item.id === config.fileId)) {
+  if (file === undefined) return { ...base, server: true, ready: true, message: null };
+  if (!fileId) return { ...base, server: true, ready: false, message: 'Elige el fichero de diseño del proyecto.' };
+  if (!resources.some((item) => item.type === 'file' && item.id === fileId)) {
     return { ...base, server: true, ready: false, message: 'El fichero elegido ya no existe en Moki: elige otro.' };
   }
   return { ...base, server: true, ready: true, message: null };

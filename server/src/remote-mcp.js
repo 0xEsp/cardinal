@@ -32,7 +32,7 @@ export async function callRemoteTool({ url, token, name, args = {}, timeoutMs = 
     if (res.status === 401) throw Object.assign(new Error('El servidor MCP rechaza el token.'), { status: 401 });
     return { res, json: await parseBody(res) };
   };
-  const init = await post({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'gotty-product-os', version: '1' } } });
+  const init = await post({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'cardinal', version: '1' } } });
   if (init.json?.error) throw new Error(init.json.error.message);
   const sessionId = init.res.headers.get('mcp-session-id');
   try {

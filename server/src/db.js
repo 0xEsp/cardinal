@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { DATA_DIR } from './paths.js';
+import { runMigrations } from './migrate.js';
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -108,6 +109,13 @@ db.exec(`
   );
 `);
 
+// Settings se crea aquí (y no solo en settings.js) para que la migración v1
+// pueda leer los ficheros de diseño elegidos antes de Cardinal.
+db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+
+// migrate-cli.js pone CARDINAL_MIGRATE=skip para lanzarlas él mismo (ensayo).
+if (process.env.CARDINAL_MIGRATE !== 'skip') runMigrations(db);
+
 export function getSessionData(cardId, slot = 'main') {
   const row = slot === 'main'
     ? db.prepare('SELECT data FROM agent_sessions WHERE card_id = ?').get(cardId)
@@ -194,6 +202,34 @@ export function listAgentRuns(cardId, limit = 20) {
     reviewCount: row.review_count,
     error: row.error,
   }));
+}
+
+/** Ejecuciones de todas las cards de un proyecto (pantalla Ejecuciones). */
+export function listProjectRuns(projectId, limit = 100) {
+  return db
+    .prepare(
+      `SELECT r.id, r.card_id, c.title AS card_title, r.mode, r.model, r.status, r.started_at, r.finished_at,
+              r.files_written, r.review, r.review_count, r.error
+       FROM agent_runs r JOIN cards c ON c.id = r.card_id
+       WHERE c.project_id = ?
+       ORDER BY r.started_at DESC, r.id DESC
+       LIMIT ?`
+    )
+    .all(projectId, Math.min(Math.max(Number(limit) || 100, 1), 500))
+    .map((row) => ({
+      id: Number(row.id),
+      cardId: row.card_id,
+      cardTitle: row.card_title,
+      mode: row.mode,
+      model: row.model,
+      status: row.status,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      filesWritten: parseJson(row.files_written, []),
+      review: parseJson(row.review, {}),
+      reviewCount: row.review_count,
+      error: row.error,
+    }));
 }
 
 function parseJson(value, fallback) {

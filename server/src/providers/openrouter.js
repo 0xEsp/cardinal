@@ -99,7 +99,7 @@ export const openrouter = {
         Authorization: `Bearer ${this.apiKey()}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'http://localhost',
-        'X-Title': 'gotty-product-os-reviewer',
+        'X-Title': 'cardinal-reviewer',
       },
       body: JSON.stringify({
         model,

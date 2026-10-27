@@ -43,7 +43,17 @@ function isLoopback(req) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-async function handle(channel, message) {
+const INTERNAL_INFO = {
+  serverInfo: { name: 'cardinal', version: '2.0.0' },
+  instructions: 'Herramientas de Cardinal para investigar, revisar y guardar definiciones y documentación de la card.',
+};
+
+/**
+ * JSON-RPC de MCP (Streamable HTTP sin estado, respuestas JSON). Lo comparten
+ * el canal interno de los agentes de cada card y el MCP para agentes externos.
+ * channel: { tools, call(name, args), info: { serverInfo, instructions } }
+ */
+export async function handleRpc(channel, message) {
   const { id, method, params } = message || {};
   const reply = (result) => ({ jsonrpc: '2.0', id, result });
   const fail = (code, text) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message: text } });
@@ -54,8 +64,7 @@ async function handle(channel, message) {
       return reply({
         protocolVersion: params?.protocolVersion || '2025-06-18',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'gotty-product-os', version: '1.0.0' },
-        instructions: 'Herramientas del Product OS de Gotty para investigar, revisar y guardar definiciones y documentación.',
+        ...(channel.info || INTERNAL_INFO),
       });
     case 'ping':
       return reply({});
@@ -93,7 +102,7 @@ export function mcpRouter() {
 
     const batch = Array.isArray(req.body);
     const messages = batch ? req.body : [req.body];
-    const replies = (await Promise.all(messages.map((message) => handle(channel, message)))).filter(Boolean);
+    const replies = (await Promise.all(messages.map((message) => handleRpc(channel, message)))).filter(Boolean);
     if (!replies.length) return res.status(202).end();
     res.json(batch ? replies : replies[0]);
   });

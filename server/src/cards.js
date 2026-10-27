@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from './db.js';
 import { designToolOf, getDesignTool } from './design-tools.js';
+import { columnOf, firstColumn, getProject } from './projects.js';
 
 // Huella de la definición con la que se aprobó un diseño: si la definición
 // cambia después, el diseño queda "desactualizado".
@@ -22,9 +23,6 @@ function parseDesign(raw, definition) {
   return { design, designStatus };
 }
 
-export const COLUMNS = ['backlog', 'todo', 'in-progress', 'done-dev', 'done'];
-export const STACKS = ['app', 'web', 'backend'];
-
 function slugify(text) {
   return text
     .toLowerCase()
@@ -38,6 +36,7 @@ function slugify(text) {
 function toCard(row, stackRows) {
   return {
     id: row.id,
+    projectId: row.project_id,
     title: row.title,
     column: row.column,
     position: row.position,
@@ -57,30 +56,34 @@ function stacksOf(cardId) {
   return db.prepare('SELECT name, version FROM card_stacks WHERE card_id = ? ORDER BY name').all(cardId);
 }
 
-function validateStacks(stacks) {
+function validateStacks(project, stacks) {
   if (!Array.isArray(stacks)) throw Object.assign(new Error('stacks debe ser un array'), { status: 400 });
   for (const s of stacks) {
-    if (!STACKS.includes(s.name)) throw Object.assign(new Error(`stack inválido: ${s.name}`), { status: 400 });
+    if (!project.stacks.includes(s.name)) throw Object.assign(new Error(`stack inválido en ${project.name}: ${s.name}`), { status: 400 });
   }
 }
 
-export function listCards() {
+function validateColumn(project, column) {
+  if (!columnOf(project, column)) throw Object.assign(new Error(`columna inválida en ${project.name}: ${column}`), { status: 400 });
+}
+
+const nextPosition = (projectId, column) =>
+  db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM cards WHERE project_id = ? AND "column" = ?').get(projectId, column).next;
+
+/** Cards de un proyecto en el orden de sus columnas y, dentro, por prioridad. */
+export function listCards(projectId) {
+  const project = getProject(projectId);
+  const order = new Map(project.columns.map((column, index) => [column.id, index]));
   const rows = db.prepare(`
     SELECT cards.*,
       (SELECT COUNT(*) FROM card_comments WHERE card_id = cards.id) AS comment_count
     FROM cards
-    ORDER BY
-      CASE "column"
-        WHEN 'backlog' THEN 0
-        WHEN 'todo' THEN 1
-        WHEN 'in-progress' THEN 2
-        WHEN 'done-dev' THEN 3
-        WHEN 'done' THEN 4
-      END,
-      position ASC,
-      created_at DESC
-  `).all();
-  return rows.map((r) => toCard(r, stacksOf(r.id)));
+    WHERE project_id = ?
+    ORDER BY position ASC, created_at DESC
+  `).all(projectId);
+  return rows
+    .map((r) => toCard(r, stacksOf(r.id)))
+    .sort((a, b) => (order.get(a.column) ?? 99) - (order.get(b.column) ?? 99));
 }
 
 export function getCard(id) {
@@ -94,28 +97,29 @@ export function getCard(id) {
   return toCard(row, stacksOf(id));
 }
 
-export function createCard({ title }) {
-  if (!title || !title.trim()) throw Object.assign(new Error('title requerido'), { status: 400 });
+export function createCard({ projectId, title, draft = '', column, stacks }) {
+  if (!title || !String(title).trim()) throw Object.assign(new Error('title requerido'), { status: 400 });
+  const project = getProject(projectId);
+  const target = column || firstColumn(project);
+  validateColumn(project, target);
+  if (stacks !== undefined) validateStacks(project, stacks);
   const id = `${Date.now().toString(36)}-${slugify(title)}`;
   const now = new Date().toISOString();
-  const position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM cards WHERE "column" = ?').get('backlog').next;
-  db.prepare('INSERT INTO cards (id, title, "column", position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(
-    id,
-    title.trim(),
-    'backlog',
-    position,
-    now,
-    now
-  );
+  db.prepare(
+    'INSERT INTO cards (id, project_id, title, "column", position, draft, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, project.id, String(title).trim(), target, nextPosition(project.id, target), String(draft || ''), now, now);
+  if (stacks?.length) {
+    const ins = db.prepare('INSERT INTO card_stacks (card_id, name, version) VALUES (?, ?, ?)');
+    for (const s of stacks) ins.run(id, s.name, s.version || null);
+  }
   return getCard(id);
 }
 
 export function updateCard(id, patch) {
   const card = getCard(id);
-  if (patch.column !== undefined && !COLUMNS.includes(patch.column)) {
-    throw Object.assign(new Error(`columna inválida: ${patch.column}`), { status: 400 });
-  }
-  if (patch.stacks !== undefined) validateStacks(patch.stacks);
+  const project = getProject(card.projectId);
+  if (patch.column !== undefined) validateColumn(project, patch.column);
+  if (patch.stacks !== undefined) validateStacks(project, patch.stacks);
 
   const next = {
     title: patch.title ?? card.title,
@@ -125,9 +129,7 @@ export function updateCard(id, patch) {
   };
   const columnChanged = next.column !== card.column;
   const definitionChanged = next.definition !== card.definition;
-  const position = columnChanged
-    ? db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM cards WHERE "column" = ?').get(next.column).next
-    : card.position;
+  const position = columnChanged ? nextPosition(card.projectId, next.column) : card.position;
   const documentationStatus = definitionChanged ? 'pending' : card.documentationStatus;
   const documentedAt = definitionChanged ? null : card.documentedAt;
 
@@ -162,13 +164,11 @@ export function saveDefinition(id, definition) {
 
 export function moveCard(id, { column, beforeId = null }) {
   const card = getCard(id);
-  if (!COLUMNS.includes(column)) {
-    throw Object.assign(new Error(`columna inválida: ${column}`), { status: 400 });
-  }
+  validateColumn(getProject(card.projectId), column);
 
   const targetRows = db
-    .prepare('SELECT id FROM cards WHERE "column" = ? AND id != ? ORDER BY position ASC, created_at DESC')
-    .all(column, id);
+    .prepare('SELECT id FROM cards WHERE project_id = ? AND "column" = ? AND id != ? ORDER BY position ASC, created_at DESC')
+    .all(card.projectId, column, id);
   let insertAt = targetRows.length;
   if (beforeId !== null) {
     insertAt = targetRows.findIndex((row) => row.id === beforeId);
@@ -186,7 +186,7 @@ export function moveCard(id, { column, beforeId = null }) {
     db.prepare('UPDATE cards SET "column" = ?, updated_at = ? WHERE id = ?').run(column, now, id);
     const updatePosition = db.prepare('UPDATE cards SET position = ? WHERE id = ?');
     targetIds.forEach((cardId, index) => updatePosition.run(index, cardId));
-    if (sourceColumn !== column) normalizeColumn(sourceColumn);
+    if (sourceColumn !== column) normalizeColumn(card.projectId, sourceColumn);
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
@@ -195,10 +195,10 @@ export function moveCard(id, { column, beforeId = null }) {
   return getCard(id);
 }
 
-function normalizeColumn(column) {
+function normalizeColumn(projectId, column) {
   const rows = db
-    .prepare('SELECT id FROM cards WHERE "column" = ? ORDER BY position ASC, created_at DESC')
-    .all(column);
+    .prepare('SELECT id FROM cards WHERE project_id = ? AND "column" = ? ORDER BY position ASC, created_at DESC')
+    .all(projectId, column);
   const updatePosition = db.prepare('UPDATE cards SET position = ? WHERE id = ?');
   rows.forEach((row, index) => updatePosition.run(index, row.id));
 }
