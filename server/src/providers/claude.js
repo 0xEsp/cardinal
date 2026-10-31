@@ -14,6 +14,7 @@ import { cliBinary, cliVersion, installState, parseJsonLine, runProcess } from '
 
 const TOKEN_SECRET = 'claude-oauth-token';
 const TOKEN_ENV = 'CLAUDE_CODE_OAUTH_TOKEN';
+const TOOL_TIMEOUT_MS = 900000;
 fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true, mode: 0o700 });
 
 function env() {
@@ -28,8 +29,11 @@ function env() {
     // Alpine: usa el ripgrep del sistema en vez del binario glibc incluido.
     USE_BUILTIN_RIPGREP: fs.existsSync('/etc/alpine-release') ? '0' : undefined,
     MCP_TIMEOUT: '30000',
-    // review_* llama a otro modelo: necesita margen.
-    MCP_TOOL_TIMEOUT: '900000',
+    // review_* llama a otro modelo y no emite nada mientras revisa: hay que
+    // subir tanto el límite total como el de inactividad (por defecto 300 s),
+    // o la revisión de un diseño grande se corta antes de responder.
+    MCP_TOOL_TIMEOUT: String(TOOL_TIMEOUT_MS),
+    CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT: String(TOOL_TIMEOUT_MS),
   };
 }
 
@@ -144,7 +148,7 @@ export const claude = {
       '--output-format', 'stream-json',
       '--verbose',
       '--include-partial-messages',
-      ...mcpSetup(path.join(cwd, 'mcp.json'), { [MCP_SERVER_NAME]: { type: 'http', url: mcpUrl } }, extraMcp),
+      ...mcpSetup(path.join(cwd, 'mcp.json'), { [MCP_SERVER_NAME]: { type: 'http', url: mcpUrl, timeout: TOOL_TIMEOUT_MS } }, extraMcp),
       ...(sessionId ? ['--resume', sessionId] : ['--session-id', newSession]),
     ];
     let result = null;
