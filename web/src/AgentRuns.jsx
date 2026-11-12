@@ -11,6 +11,16 @@ export const RUN_STATUS = {
   failed: { label: 'FALLIDA', color: '#FF8A6B' },
 };
 
+const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n));
+
+/** Tokens de una ejecución (agente + revisor): "entrada → salida". La salida es lo caro y lo lento. */
+export function runTokens(run) {
+  const parts = Object.values(run.usage || {});
+  if (!parts.length) return '—';
+  const sum = (key) => parts.reduce((total, part) => total + (part[key] || 0), 0);
+  return `${compact(sum('input'))} → ${compact(sum('output'))}`;
+}
+
 export function runModeLabel(mode) {
   if (mode === 'document') return 'documentar';
   if (mode === 'define') return 'definir';
@@ -64,6 +74,7 @@ export default function AgentRuns({ cardId }) {
               <dt>ESCRITOS</dt><dd>{run.filesWritten?.join(', ') || '—'}</dd>
               <dt>VALIDACIÓN</dt><dd>{validation.ok ? 'correcta' : validation.errors?.length ? 'con errores' : '—'}</dd>
               <dt>REVISIÓN</dt><dd>{review.ok ? 'aprobada' : review.issues?.length ? 'con incidencias' : '—'}{run.reviewCount ? ` (${run.reviewCount})` : ''}</dd>
+              <dt>TOKENS</dt><dd className="mono">{runTokens(run)}</dd>
             </dl>
             {review.summary && <p className="muted">{review.summary}</p>}
             {run.error && <p className="notice warn">{run.error}</p>}

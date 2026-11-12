@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from './api.js';
 import { href } from './router.js';
-import { RunStatus, runModeLabel } from './AgentRuns.jsx';
+import { RunStatus, runModeLabel, runTokens } from './AgentRuns.jsx';
 import { formatDate } from './ui.jsx';
 
 const FILTERS = [
@@ -56,7 +56,7 @@ export default function RunsView({ project }) {
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>ESTADO</th><th>CARD</th><th>MODO</th><th>MODELO</th><th>INICIO</th><th>DURACIÓN</th><th>REVISIÓN</th></tr>
+                <tr><th>ESTADO</th><th>CARD</th><th>MODO</th><th>MODELO</th><th>INICIO</th><th>DURACIÓN</th><th title="Entrada → salida, agente y revisor">TOKENS</th><th>REVISIÓN</th></tr>
               </thead>
               <tbody>
                 {visible.map((run) => (
@@ -67,6 +67,7 @@ export default function RunsView({ project }) {
                     <td className="mono small">{run.model}</td>
                     <td className="mono small">{formatDate(run.startedAt)}</td>
                     <td className="mono small">{duration(run)}</td>
+                    <td className="mono small">{runTokens(run)}</td>
                     <td className="small">{run.error ? <span className="warn-text">{run.error}</span> : run.review?.ok ? 'aprobada' : run.review?.issues?.length ? 'con incidencias' : '—'}</td>
                   </tr>
                 ))}

@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { applyEdits, diffLines, outline, readSection } from './doc-edit.js';
 
 // Docs de producto (kind "doc") y reglas del harness (kind "rule", lo que antes
 // era os/) de cada proyecto. Cada escritura guarda una versión con su autor y
@@ -37,13 +38,47 @@ export function listDocs(projectId, kind = 'doc') {
   return db
     .prepare('SELECT path, content, version, updated_at FROM documents WHERE project_id = ? AND kind = ? AND deleted_at IS NULL ORDER BY path')
     .all(projectId, checkKind(kind))
-    .map((row) => ({ path: row.path, title: titleOf(row.content, row.path), version: row.version, updatedAt: row.updated_at }));
+    .map((row) => ({ path: row.path, title: titleOf(row.content, row.path), version: row.version, chars: row.content.length, updatedAt: row.updated_at }));
 }
 
 export function readDoc(projectId, path, kind = 'doc') {
   const row = findRow(projectId, path, kind);
   if (!row) throw fail(404, `${kind === 'rule' ? 'Regla' : 'Doc'} ${path} no encontrado`);
   return row.content;
+}
+
+/** Índice de secciones: permite leer o editar una parte sin traer el documento entero. */
+export function docOutline(projectId, path, kind = 'doc') {
+  const row = findRow(projectId, path, kind);
+  if (!row) throw fail(404, `${kind === 'rule' ? 'Regla' : 'Doc'} ${path} no encontrado`);
+  return `${row.path} · v${row.version}\n${outlineText(row.content)}`;
+}
+
+/**
+ * Índice como texto: una línea por sección con su nivel y tamaño. En JSON, un
+ * documento con cien secciones ocupaba un tercio de lo que se quería ahorrar.
+ */
+export function outlineText(content) {
+  const sections = outline(content);
+  const lines = sections.map((section) => `${'#'.repeat(section.level)} ${section.title} (${section.chars} car.)`);
+  return [`${String(content).length} caracteres · ${sections.length} secciones. Si un título se repite, usa la ruta "Padre > Hija".`, ...lines].join('\n');
+}
+
+export function readDocSection(projectId, path, section, kind = 'doc') {
+  return readSection(readDoc(projectId, path, kind), section);
+}
+
+/**
+ * Edición parcial: aplica las ediciones sobre la versión vigente y guarda una
+ * versión nueva. Quien edita solo envía lo que cambia.
+ */
+export function editDoc(projectId, path, edits, who = {}) {
+  const kind = who.kind || 'doc';
+  const before = readDoc(projectId, path, kind);
+  const after = applyEdits(before, edits);
+  const saved = saveDoc(projectId, path, after, who);
+  const diff = diffLines(before, after);
+  return { ...saved, chars: after.length, linesAdded: diff.added, linesRemoved: diff.removed };
 }
 
 /** Contenido de una regla, o '' si el proyecto no la tiene (las reglas son opcionales). */
@@ -68,9 +103,12 @@ export function searchDocs(projectId, query, limit = 8, kind = 'doc') {
       const start = Math.max(0, firstTermIndex - 180);
       const end = Math.min(content.length, firstTermIndex + 360);
       const snippet = content.slice(start, end).replace(/\s+/g, ' ').trim();
+      // La sección donde aparece: con ella se lee solo esa parte (read_doc + section).
+      const section = outline(content).filter((item) => item.start <= firstTermIndex).at(-1)?.path || null;
       return {
         path,
         title: titleOf(content, path),
+        section,
         matches: matches.length,
         snippet: `${start > 0 ? '…' : ''}${snippet}${end < content.length ? '…' : ''}`,
       };

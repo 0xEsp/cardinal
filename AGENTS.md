@@ -22,6 +22,7 @@ server/src/
   projects.js       proyectos: stacks, columnas (con su agente) y ficheros de diseño
   cards.js          cards, stacks de la card, comentarios, manifiesto de diseño
   docs.js           docs (kind "doc") y reglas (kind "rule") versionados en documents/document_versions
+  doc-edit.js       texto de un documento: índice de secciones, edición parcial y diff (funciones puras)
   agent.js          ciclo de los agentes de Cardinal: sesiones por card y slot, validación, revisión, guardado
   prompt.js         prompt de sistema de cada agente a partir de las reglas del proyecto; herramientas por modo
   validation.js     validación estructural de definiciones, docs y manifiestos de diseño
@@ -92,7 +93,8 @@ Si tienes conectado el servidor MCP `cardinal` (ver README), tienes acceso a las
 - **Empieza por `list_projects`** para conocer ids, stacks y columnas.
 - **Para implementar una card**, pide `get_feature_prompt`: es la definición dentro de la plantilla del proyecto, con el diseño y cómo leerlo. Si el diseño y la definición discrepan en comportamiento, manda la definición. Lee también `read_rule` de los criterios de QA del stack (`qa-criteria-<stack>.md`).
 - **Al terminar de implementar**, mueve la card a la columna de documentación con `move_card` si el usuario te lo pide, y deja constancia con `comment_card` (rama, PR, decisiones).
-- **Antes de escribir un doc**, léelo con `read_doc` y envía el contenido completo con `write_doc`, conservando lo que no cambias. Explica el cambio en `note`. Sigue la regla `product-doc-guide.md` del proyecto.
-- **Las reglas afectan a todos los agentes del proyecto.** Cambia una con `update_rule` solo si el usuario lo pide, y explica el cambio en `note`.
+- **Lee solo lo que necesitas.** Un doc puede tener decenas de miles de caracteres (`list_docs` da el tamaño). Localiza con `search_docs` (indica la sección) o `doc_outline` y lee con `read_doc` + `section`.
+- **Para cambiar un doc usa `edit_doc`**: envías solo lo que cambia (un fragmento, una sección o un añadido al final) y se guarda una versión nueva. `write_doc` es para crear un doc o reescribirlo casi entero. Explica el cambio en `note` y sigue la regla `product-doc-guide.md` del proyecto.
+- **Las reglas afectan a todos los agentes del proyecto.** Cambia una (`edit_doc` con `kind: "rule"`, o `update_rule` para sustituirla entera) solo si el usuario lo pide, y explica el cambio en `note`.
 - **No inventes contexto.** Si un doc o una regla no cubre algo, dilo; no lo presentes como existente. Busca primero con `search_docs`.
 - **Comentarios con autor.** Todo lo que escribes queda firmado con el nombre de tu token: escribe como lo haría un compañero del equipo.

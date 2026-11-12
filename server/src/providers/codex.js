@@ -217,7 +217,7 @@ export const codex = {
   },
 
   // extraMcp permite que el revisor consulte el diseño (capturas) antes de responder.
-  async complete({ system, user, model, effort, extraMcp, signal }) {
+  async complete({ system, user, model, effort, extraMcp, signal, onUsage }) {
     const bin = cliBinary('codex');
     if (!bin) throw new Error('El CLI de Codex no está instalado');
     let text = '';
@@ -232,6 +232,7 @@ export const codex = {
         const event = parseJsonLine(line);
         if (event?.type === 'item.completed' && event.item?.type === 'agent_message') text = event.item.text || text;
         if (event?.type === 'turn.failed') text = '';
+        if (event?.type === 'turn.completed' && event.usage) onUsage?.(event.usage);
       },
     });
     if (out.code !== 0 || !text) throw new Error(`Codex (revisor) falló: ${lastLines(out.stderr)}`);

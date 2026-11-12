@@ -155,7 +155,7 @@ export function finishAgentRun(id, data) {
   db.prepare(
     `UPDATE agent_runs
      SET status = ?, finished_at = ?, docs_read = ?, docs_searched = ?, files_written = ?,
-         validation = ?, review = ?, tool_rounds = ?, review_count = ?, error = ?
+         validation = ?, review = ?, tool_rounds = ?, review_count = ?, usage = ?, error = ?
      WHERE id = ?`
   ).run(
     data.status,
@@ -167,6 +167,7 @@ export function finishAgentRun(id, data) {
     JSON.stringify(data.review || {}),
     Number(data.toolRounds || 0),
     Number(data.reviewCount || 0),
+    JSON.stringify(data.usage || {}),
     data.error || null,
     id
   );
@@ -177,7 +178,7 @@ export function listAgentRuns(cardId, limit = 20) {
     .prepare(
       `SELECT id, card_id, mode, model, status, started_at, finished_at, context_revision,
               docs_read, docs_searched, files_written, validation, review,
-              tool_rounds, review_count, error
+              tool_rounds, review_count, usage, error
        FROM agent_runs
        WHERE card_id = ?
        ORDER BY started_at DESC, id DESC
@@ -200,6 +201,7 @@ export function listAgentRuns(cardId, limit = 20) {
     review: parseJson(row.review, {}),
     toolRounds: row.tool_rounds,
     reviewCount: row.review_count,
+    usage: parseJson(row.usage, {}),
     error: row.error,
   }));
 }
@@ -209,7 +211,7 @@ export function listProjectRuns(projectId, limit = 100) {
   return db
     .prepare(
       `SELECT r.id, r.card_id, c.title AS card_title, r.mode, r.model, r.status, r.started_at, r.finished_at,
-              r.files_written, r.review, r.review_count, r.error
+              r.files_written, r.review, r.review_count, r.tool_rounds, r.usage, r.error
        FROM agent_runs r JOIN cards c ON c.id = r.card_id
        WHERE c.project_id = ?
        ORDER BY r.started_at DESC, r.id DESC
@@ -228,6 +230,8 @@ export function listProjectRuns(projectId, limit = 100) {
       filesWritten: parseJson(row.files_written, []),
       review: parseJson(row.review, {}),
       reviewCount: row.review_count,
+      toolRounds: row.tool_rounds,
+      usage: parseJson(row.usage, {}),
       error: row.error,
     }));
 }

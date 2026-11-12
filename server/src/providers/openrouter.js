@@ -91,7 +91,7 @@ export const openrouter = {
     ];
   },
 
-  async complete({ system, user, model, effort, signal }) {
+  async complete({ system, user, model, effort, signal, onUsage }) {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       signal,
@@ -117,6 +117,7 @@ export const openrouter = {
       throw new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
     }
     const data = await response.json();
+    if (data.usage) onUsage?.(data.usage);
     return data.choices?.[0]?.message?.content;
   },
 };

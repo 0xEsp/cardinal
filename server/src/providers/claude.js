@@ -190,7 +190,7 @@ export const claude = {
   },
 
   // extraMcp permite que el revisor consulte el diseño (capturas) antes de responder.
-  async complete({ system, user, model, effort, extraMcp, signal }) {
+  async complete({ system, user, model, effort, extraMcp, signal, onUsage }) {
     const bin = cliBinary('claude');
     if (!bin) throw new Error('El CLI de Claude Code no está instalado');
     const systemPromptFile = writeTemp(system);
@@ -206,6 +206,7 @@ export const claude = {
       if (!parsed || parsed.is_error || out.code !== 0) {
         throw new Error(`Claude (revisor) falló: ${parsed?.result || out.stderr.trim().slice(-300) || `código ${out.code}`}`);
       }
+      if (parsed.usage) onUsage?.(parsed.usage);
       return parsed.result || '';
     } finally {
       fs.rmSync(systemPromptFile, { force: true });

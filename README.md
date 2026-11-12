@@ -74,8 +74,9 @@ http_headers = { Authorization = "Bearer crd_…" }
 | `get_card` | Card completa: borrador, definición, diseño y comentarios | |
 | `get_feature_prompt` | La definición envuelta en la plantilla del proyecto, lista para implementar | |
 | `create_card` · `update_card` · `move_card` · `comment_card` | Gestionar cards | ✓ |
-| `list_docs` · `search_docs` · `read_doc` · `doc_history` | Consultar la documentación y su historial | |
-| `write_doc` | Crear o sustituir un doc (queda versionado con tu token como autor) | ✓ |
+| `list_docs` · `search_docs` · `doc_outline` · `read_doc` · `doc_history` | Consultar la documentación (entera o por secciones) y su historial | |
+| `edit_doc` | Cambiar parte de un doc o de una regla enviando solo lo que cambia | ✓ |
+| `write_doc` | Crear un doc o sustituirlo entero (queda versionado con tu token como autor) | ✓ |
 | `list_rules` · `read_rule` | Consultar las reglas del proyecto | |
 | `update_rule` | Cambiar una regla (afecta a todos los agentes del proyecto) | ✓ |
 

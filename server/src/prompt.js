@@ -121,12 +121,21 @@ export function buildSystemPrompt(mode, card, { design = null, task = 'design' }
   const docs = listDocs(project.id);
   sections.push(
     `# Documentación de producto existente de ${project.name}\n\n` +
-      (docs.length ? docs.map((d) => `- ${d.path} — ${d.title}`).join('\n') : '(aún no hay documentos)')
+      (docs.length ? docs.map((d) => `- ${d.path} — ${d.title} (${d.chars} car.)`).join('\n') : '(aún no hay documentos)')
   );
   sections.push(
     '# Investigación obligatoria\n\n' +
-      'La lista anterior solo sirve como índice. Antes de definir o documentar, usa `search_docs` con conceptos del borrador o de la Definición IA + y después `read_doc` sobre cada documento relevante. No uses comentarios de la card como contexto de trabajo.'
+      'La lista anterior solo sirve como índice. Antes de definir o documentar, usa `search_docs` con conceptos del borrador o de la Definición IA + y después `read_doc` sobre cada documento relevante. No uses comentarios de la card como contexto de trabajo.\n\n' +
+      'Lee solo lo que necesitas: en documentos de más de unos 15.000 caracteres consulta `doc_outline` y lee con `read_doc` + `section` las secciones que te afectan (search_docs indica en qué sección aparece cada resultado), en lugar del documento entero.'
   );
+  if (mode === 'document') {
+    sections.push(
+      '# Cómo se escribe un documento\n\n' +
+        '- **Documento existente:** modifícalo con `edit_doc`, enviando solo los fragmentos o secciones que cambian. Nunca lo reescribas entero ni reenvíes su contenido: Cardinal conserva el borrador con tus ediciones.\n' +
+        '- **Documento nuevo:** pasa su contenido completo a `review_doc` (una sola vez).\n' +
+        '- **Revisar y guardar:** `review_doc` con la ruta revisa el borrador; si pide cambios, corrígelos con `edit_doc` y vuelve a revisar. Cuando esté aprobado, `save_doc` con la ruta lo guarda tal cual.'
+    );
+  }
 
   const props = `stacks: ${formatStacks(card)} · columna: ${card.column}`;
   if (mode === 'define') {
@@ -169,6 +178,28 @@ export function buildFeaturePrompt(card) {
   return template.includes('{{designs}}') || !designs ? prompt.trimEnd() + '\n' : `${prompt.trimEnd()}\n\n${designs}\n`;
 }
 
+// Compartido con el MCP externo: las dos puertas editan documentos igual.
+export const EDITS_SCHEMA = {
+  type: 'array',
+  minItems: 1,
+  description:
+    'Ediciones que se aplican en orden; si una no encaja no se aplica ninguna. Cada una es UNA de estas formas: ' +
+    '{old_string, new_string} sustituye un fragmento exacto (debe ser único; añade contexto o usa replace_all); ' +
+    '{section, content} sustituye una sección entera, encabezado incluido (content vacío la elimina); ' +
+    '{append} añade texto al final del documento.',
+  items: {
+    type: 'object',
+    properties: {
+      old_string: { type: 'string', description: 'Texto actual a sustituir, copiado carácter a carácter' },
+      new_string: { type: 'string', description: 'Texto que lo reemplaza' },
+      replace_all: { type: 'boolean', description: 'Sustituir todas las apariciones de old_string' },
+      section: { type: 'string', description: 'Título de la sección a sustituir, o su ruta "Padre > Hija" si el título se repite' },
+      content: { type: 'string', description: 'Nuevo texto completo de la sección, empezando por su encabezado' },
+      append: { type: 'string', description: 'Texto a añadir al final del documento' },
+    },
+  },
+};
+
 export function toolsForMode(mode) {
   const listDocsTool = {
     type: 'function',
@@ -182,10 +213,26 @@ export function toolsForMode(mode) {
     type: 'function',
     function: {
       name: 'read_doc',
-      description: 'Lee el contenido completo de un documento de producto existente',
+      description:
+        'Lee un documento de producto. Con section devuelve solo esa sección (y sus subsecciones): úsalo en documentos grandes, tras consultar doc_outline o search_docs, en vez de leerlos enteros.',
       parameters: {
         type: 'object',
-        properties: { path: { type: 'string', description: 'Ruta del documento dentro del proyecto, p. ej. "coleccion.md"' } },
+        properties: {
+          path: { type: 'string', description: 'Ruta del documento dentro del proyecto, p. ej. "coleccion.md"' },
+          section: { type: 'string', description: 'Título de la sección a leer, o su ruta "Padre > Hija" (opcional)' },
+        },
+        required: ['path'],
+      },
+    },
+  };
+  const docOutlineTool = {
+    type: 'function',
+    function: {
+      name: 'doc_outline',
+      description: 'Índice de un documento: sus secciones con el tamaño de cada una. Sirve para decidir qué secciones leer o editar sin traer el documento entero.',
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string', description: 'Ruta del documento dentro del proyecto' } },
         required: ['path'],
       },
     },
@@ -195,7 +242,7 @@ export function toolsForMode(mode) {
     function: {
       name: 'search_docs',
       description:
-        'Busca términos o conceptos en el contenido completo de los docs del proyecto. Devuelve los documentos relevantes y fragmentos para decidir cuáles leer con read_doc.',
+        'Busca términos o conceptos en el contenido completo de los docs del proyecto. Devuelve los documentos relevantes, la sección donde aparecen y un fragmento, para decidir qué leer con read_doc.',
       parameters: {
         type: 'object',
         properties: {
@@ -263,6 +310,7 @@ export function toolsForMode(mode) {
     return [
       listDocsTool,
       searchDocsTool,
+      docOutlineTool,
       readDocTool,
       reviewDefinitionTool,
       saveDefinitionTool,
@@ -295,6 +343,7 @@ export function toolsForMode(mode) {
     return [
       listDocsTool,
       searchDocsTool,
+      docOutlineTool,
       readDocTool,
       {
         type: 'function',
@@ -327,20 +376,37 @@ export function toolsForMode(mode) {
   return [
     listDocsTool,
     searchDocsTool,
+    docOutlineTool,
     readDocTool,
+    {
+      type: 'function',
+      function: {
+        name: 'edit_doc',
+        description:
+          'Modifica un documento existente enviando solo lo que cambia. Las ediciones se acumulan en un borrador (no se guarda nada todavía); puedes llamarla varias veces. Es la forma de actualizar un documento: no lo reescribas entero.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Ruta del .md que se edita' },
+            edits: EDITS_SCHEMA,
+          },
+          required: ['path', 'edits'],
+        },
+      },
+    },
     {
       type: 'function',
       function: {
         name: 'review_doc',
         description:
-          'Ejecuta una revisión estructural y semántica independiente de un documento candidato. Es obligatorio usarla antes de save_doc; no guarda nada.',
+          'Revisión estructural y semántica independiente del borrador de un documento. Obligatoria antes de save_doc; no guarda nada. Tras edit_doc, llámala solo con path. Pasa content únicamente para crear un documento nuevo (ese contenido pasa a ser el borrador).',
         parameters: {
           type: 'object',
           properties: {
             path: { type: 'string', description: 'Ruta relativa del .md que se quiere revisar' },
-            content: { type: 'string', description: 'Contenido completo candidato en markdown' },
+            content: { type: 'string', description: 'Solo para documentos nuevos: contenido completo en markdown' },
           },
-          required: ['path', 'content'],
+          required: ['path'],
         },
       },
     },
@@ -349,14 +415,13 @@ export function toolsForMode(mode) {
       function: {
         name: 'save_doc',
           description:
-            'Guarda (crea o sobreescribe) un documento de producto del proyecto. Solo funciona después de que review_doc haya aprobado exactamente este path y contenido. Para actualizar uno existente, léelo antes con read_doc y guarda el contenido completo integrando los cambios.',
+            'Guarda el borrador de un documento, tal como lo aprobó review_doc. Indica solo path: no reenvíes el contenido. Si editas el borrador después de la revisión, hay que revisarlo de nuevo.',
         parameters: {
           type: 'object',
           properties: {
             path: { type: 'string', description: 'Ruta del .md dentro de los docs del proyecto' },
-            content: { type: 'string', description: 'Contenido completo del documento en markdown' },
           },
-          required: ['path', 'content'],
+          required: ['path'],
         },
       },
     },

@@ -23,6 +23,7 @@ export const DEFAULT_COLUMNS = [
 const MIGRATIONS = [
   { version: 1, name: 'multi-proyecto, docs y reglas en SQLite', up: migrateToProjects },
   { version: 2, name: 'tokens del MCP de agentes', up: addMcpTokens },
+  { version: 3, name: 'consumo de tokens por ejecución', up: addRunUsage },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.at(-1).version;
@@ -215,6 +216,17 @@ function addMcpTokens(db) {
       revoked_at   TEXT
     );
   `);
+  return { before, after: snapshot(db) };
+}
+
+// Tokens de entrada, caché y salida de cada ejecución (agente y revisor), para
+// medir lo que cuesta un cambio. Las ejecuciones anteriores quedan con '{}'.
+function addRunUsage(db) {
+  const before = snapshot(db);
+  if (!columnsOf(db, 'agent_runs').has('usage')) {
+    db.exec("ALTER TABLE agent_runs ADD COLUMN usage TEXT NOT NULL DEFAULT '{}'");
+  }
+  if (!columnsOf(db, 'agent_runs').has('usage')) throw new Error('No se ha podido añadir agent_runs.usage');
   return { before, after: snapshot(db) };
 }
 

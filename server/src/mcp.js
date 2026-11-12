@@ -7,7 +7,7 @@ import express from 'express';
 // herramientas de su modo y no puede tocar otras cards.
 
 const channels = new Map(); // token -> { tools, call }
-const READ_ONLY = new Set(['list_docs', 'search_docs', 'read_doc', 'review_definition', 'review_doc']);
+const READ_ONLY = new Set(['list_docs', 'search_docs', 'doc_outline', 'read_doc', 'review_definition', 'review_doc']);
 
 export const MCP_SERVER_NAME = 'productos';
 

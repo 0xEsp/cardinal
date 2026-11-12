@@ -4,7 +4,7 @@ import { db } from './db.js';
 import * as cards from './cards.js';
 import * as docs from './docs.js';
 import { getProject, listProjects } from './projects.js';
-import { buildFeaturePrompt } from './prompt.js';
+import { buildFeaturePrompt, EDITS_SCHEMA } from './prompt.js';
 import { handleRpc } from './mcp.js';
 
 // MCP de Cardinal para los agentes del usuario (Claude Code, Codex, Cursor…):
@@ -66,6 +66,8 @@ function authenticate(req) {
 const str = (description) => ({ type: 'string', description });
 const PROJECT = str('Id del proyecto (ver list_projects), p. ej. "mi-proyecto"');
 const CARD = str('Id de la card (ver list_cards)');
+const SECTION = str('Título de la sección a leer, o su ruta "Padre > Hija" (opcional)');
+const KIND = { type: 'string', enum: ['doc', 'rule'], description: 'doc (por defecto) o rule' };
 
 // write: requiere token de escritura. Cada handler recibe (args, ctx) y
 // devuelve un objeto serializable o texto.
@@ -167,28 +169,43 @@ const TOOLS = [
   },
   {
     name: 'list_docs',
-    description: 'Lista los documentos de producto de un proyecto.',
+    description: 'Lista los documentos de producto de un proyecto, con su tamaño en caracteres.',
     input: { project: PROJECT },
     required: ['project'],
     run: ({ project }, ctx) => (ctx.checkProject(project), docs.listDocs(project)),
   },
   {
     name: 'search_docs',
-    description: 'Busca términos en el contenido de los docs de un proyecto y devuelve fragmentos para decidir cuáles leer.',
+    description: 'Busca términos en el contenido de los docs de un proyecto. Devuelve, por documento, la sección donde aparecen y un fragmento, para leer solo esa sección con read_doc.',
     input: { project: PROJECT, query: str('Términos a buscar'), limit: { type: 'integer', minimum: 1, maximum: 20 } },
     required: ['project', 'query'],
     run: ({ project, query, limit }, ctx) => (ctx.checkProject(project), docs.searchDocs(project, query, limit)),
   },
   {
-    name: 'read_doc',
-    description: 'Lee un documento de producto completo.',
-    input: { project: PROJECT, path: str('Ruta del doc, p. ej. "news.md"') },
+    name: 'doc_outline',
+    description: 'Índice de un doc (o de una regla con kind="rule"): una línea por sección con su nivel y tamaño. Úsalo antes de leer o editar un documento grande.',
+    input: { project: PROJECT, path: str('Ruta del .md'), kind: KIND },
     required: ['project', 'path'],
-    run: ({ project, path }, ctx) => (ctx.checkProject(project), docs.readDoc(project, path)),
+    run: ({ project, path, kind = 'doc' }, ctx) => (ctx.checkProject(project), docs.docOutline(project, path, kind)),
+  },
+  {
+    name: 'read_doc',
+    description: 'Lee un documento de producto. Con section devuelve solo esa sección y sus subsecciones: en documentos grandes consulta antes doc_outline y lee por secciones.',
+    input: { project: PROJECT, path: str('Ruta del doc, p. ej. "news.md"'), section: SECTION },
+    required: ['project', 'path'],
+    run: ({ project, path, section }, ctx) => (ctx.checkProject(project), section ? docs.readDocSection(project, path, section) : docs.readDoc(project, path)),
+  },
+  {
+    name: 'edit_doc',
+    description: 'Modifica un doc existente (o una regla con kind="rule") enviando solo lo que cambia: sustituir un fragmento, sustituir una sección o añadir al final. Es la forma de actualizar un documento; no hace falta leerlo ni reenviarlo entero. Guarda una versión nueva con tu token como autor.',
+    input: { project: PROJECT, path: str('Ruta del .md'), edits: EDITS_SCHEMA, note: str('Qué cambia y por qué'), kind: KIND },
+    required: ['project', 'path', 'edits'],
+    write: true,
+    run: ({ project, path, edits, note, kind = 'doc' }, ctx) => (ctx.checkProject(project), docs.editDoc(project, path, edits, { kind, author: ctx.author, source: 'mcp', note: note || null })),
   },
   {
     name: 'write_doc',
-    description: 'Crea o sustituye un documento de producto. Léelo antes con read_doc y envía el contenido completo. Queda versionado con tu token como autor.',
+    description: 'Crea un documento de producto nuevo, o sustituye uno entero cuando se reescribe casi todo. Para cambiar parte de un documento existente usa edit_doc. Queda versionado con tu token como autor.',
     input: { project: PROJECT, path: str('Ruta del .md'), content: str('Contenido completo en markdown'), note: str('Qué cambia y por qué (opcional)') },
     required: ['project', 'path', 'content'],
     write: true,
@@ -210,14 +227,14 @@ const TOOLS = [
   },
   {
     name: 'read_rule',
-    description: 'Lee una regla del proyecto, p. ej. "card-definition.md" o "qa-criteria-backend.md".',
-    input: { project: PROJECT, name: str('Nombre de la regla') },
+    description: 'Lee una regla del proyecto, p. ej. "card-definition.md" o "qa-criteria-backend.md". Con section devuelve solo esa sección.',
+    input: { project: PROJECT, name: str('Nombre de la regla'), section: SECTION },
     required: ['project', 'name'],
-    run: ({ project, name }, ctx) => (ctx.checkProject(project), docs.readDoc(project, name, 'rule')),
+    run: ({ project, name, section }, ctx) => (ctx.checkProject(project), section ? docs.readDocSection(project, name, section, 'rule') : docs.readDoc(project, name, 'rule')),
   },
   {
     name: 'update_rule',
-    description: 'Crea o sustituye una regla del proyecto. Afecta a todos los agentes de Cardinal de ese proyecto: envía el contenido completo y explica el cambio en note.',
+    description: 'Crea o sustituye entera una regla del proyecto (para cambiar una parte usa edit_doc con kind="rule"). Afecta a todos los agentes de Cardinal de ese proyecto: explica el cambio en note.',
     input: { project: PROJECT, name: str('Nombre de la regla (.md)'), content: str('Contenido completo'), note: str('Qué cambia y por qué') },
     required: ['project', 'name', 'content'],
     write: true,
@@ -230,7 +247,8 @@ const INFO = {
   instructions:
     'Cardinal gestiona el producto de varios proyectos: un board de cards (borrador → Definición IA → diseño → documentación), ' +
     'los docs de producto (cómo funciona hoy cada flujo) y las reglas con las que trabajan sus agentes. Empieza con list_projects. ' +
-    'Antes de implementar una card, léela con get_card o get_feature_prompt; antes de escribir un doc, léelo y conserva lo que no cambias.',
+    'Antes de implementar una card, léela con get_card o get_feature_prompt. Los docs pueden ser grandes: localiza con search_docs o doc_outline, ' +
+    'lee por secciones (read_doc con section) y modifica con edit_doc enviando solo lo que cambia; write_doc es para documentos nuevos.',
 };
 
 function channelFor(token) {
