@@ -319,8 +319,17 @@ export function toolsForMode(mode) {
         function: {
           name: 'review_design',
           description:
-            'Revisión independiente del diseño: valida el manifiesto y un revisor inspecciona los artboards en la herramienta de diseño (capturas) contra la definición y la guía de diseño. Obligatoria antes de save_design; no guarda nada.',
-          parameters: { type: 'object', properties: { manifest: manifestSchema }, required: ['manifest'] },
+            'Revisión independiente del diseño: valida el manifiesto y un revisor inspecciona los artboards en la herramienta de diseño (capturas) contra la definición y la guía de diseño. Obligatoria antes de save_design; no guarda nada. ' +
+            'Envía siempre el manifiesto completo: los diseños grandes se revisan por bloques en paralelo y las partes aprobadas no se repiten. ' +
+            'Si responde "pending": true, la revisión sigue en curso: vuelve a llamarla con el mismo manifiesto, sin cambiar nada. No recortes el manifiesto ni muevas artboards para acelerarla.',
+          parameters: {
+            type: 'object',
+            properties: {
+              manifest: manifestSchema,
+              changed: { type: 'array', items: { type: 'string' }, description: 'Ids de los artboards que has modificado desde la última revisión, para volver a revisar sus bloques' },
+            },
+            required: ['manifest'],
+          },
         },
       },
       {

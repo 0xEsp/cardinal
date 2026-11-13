@@ -23,6 +23,7 @@ server/src/
   cards.js          cards, stacks de la card, comentarios, manifiesto de diseño
   docs.js           docs (kind "doc") y reglas (kind "rule") versionados en documents/document_versions
   doc-edit.js       texto de un documento: índice de secciones, edición parcial y diff (funciones puras)
+  design-review.js  reparto de un manifiesto de diseño en bloques para revisarlo por partes (funciones puras)
   agent.js          ciclo de los agentes de Cardinal: sesiones por card y slot, validación, revisión, guardado
   prompt.js         prompt de sistema de cada agente a partir de las reglas del proyecto; herramientas por modo
   validation.js     validación estructural de definiciones, docs y manifiestos de diseño
